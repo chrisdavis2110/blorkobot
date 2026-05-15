@@ -164,10 +164,13 @@ _COMMANDS = {
     "wiki": False,
 }
 
-# Maps trigger words (including aliases) to canonical ids in _COMMANDS.
+# Maps alternate trigger words to canonical ids in _COMMANDS.
+# All aliases for a command are accepted automatically in _cmd_hit() (you do
+# not need to repeat them in each if _hit(...) line). Topic channels accept any
+# alias whose canonical id matches a trigger listed in _TOPIC_CHANNELS.
 _COMMAND_ALIASES = {
     "p": "path",
-    "t": "test",
+    "t": "path",
     "patha": "pathall",
     "longpath": "pathx",
     "bigpath": "pathx",
@@ -249,6 +252,17 @@ def _cmd_id(word: str) -> str:
     return _COMMAND_ALIASES.get(word, word)
 
 
+def _aliases_for(cmd_id: str) -> frozenset[str]:
+    cid = _cmd_id(cmd_id)
+    return frozenset(a for a, c in _COMMAND_ALIASES.items() if c == cid)
+
+
+def _cmd_triggers(cmd_id: str, *names: str) -> tuple[str, ...]:
+    """Canonical id, explicit names, and every alias pointing at this command."""
+    cid = _cmd_id(cmd_id)
+    return tuple({cid, cmd_id, *names, *_aliases_for(cmd_id)})
+
+
 def _cmd_enabled(cmd_id: str) -> bool:
     return _COMMANDS.get(_cmd_id(cmd_id), True) is not False
 
@@ -273,7 +287,9 @@ def _cmd_allowed_in_channel(cmd_id: str, channel_name: str, bare: str | None) ->
     if triggers is not None:
         if bare is None:
             return False
-        return bare.split()[0] in triggers
+        msg_cid = _cmd_id(bare.split()[0])
+        allowed = {_cmd_id(t) for t in triggers}
+        return msg_cid in allowed
     return False
 
 
@@ -288,9 +304,10 @@ def _cmd_hit(
         return False
     if channel_name is not None and not _cmd_allowed_in_channel(cmd_id, channel_name, bare):
         return False
+    triggers = _cmd_triggers(cmd_id, *names)
     if starts:
-        return _cmd_match(bare, *names) or _cmd_starts(bare, *names)
-    return _cmd_match(bare, *names)
+        return _cmd_match(bare, *triggers) or _cmd_starts(bare, *triggers)
+    return _cmd_match(bare, *triggers)
 
 
 def _fetch(url, timeout=8, headers=None):
