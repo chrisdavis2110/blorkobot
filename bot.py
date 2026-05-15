@@ -166,9 +166,8 @@ _COMMANDS = {
 
 # Maps trigger words (including aliases) to canonical ids in _COMMANDS.
 _COMMAND_ALIASES = {
-    "ping": "path",
-    "pathbot": "path",
-    "test": "path",
+    "p": "path",
+    "t": "test",
     "patha": "pathall",
     "longpath": "pathx",
     "bigpath": "pathx",
@@ -183,6 +182,8 @@ _COMMAND_ALIASES = {
     "solar": "space",
     "spacewx": "swx",
     "hfconditions": "hf",
+    "hfcond": "hf",
+    "hfconds": "hf",
     "propagation": "hf",
     "flares": "flare",
     "asteroid": "neo",
