@@ -2,9 +2,31 @@
 
 BlorkoBot is a bot for [MeshCore](https://github.com/meshcore-dev/MeshCore), a mesh radio service.
 
-We use [Remote Terminal for MeshCore](https://github.com/nicholasgasior/Remote-Terminal-for-MeshCore) to talk to users. It runs locally and exposes an HTTP API at `http://127.0.0.1:4042/` (see `/docs` or `/openapi.json`).
+We use [Remote Terminal for MeshCore](https://github.com/nicholasgasior/Remote-Terminal-for-MeshCore) to talk to users. It runs locally and exposes an HTTP API (default `http://127.0.0.1:8000/`, see `/docs` or `/openapi.json`).
 
 `bot.py` is a Python "fanout" plugin for Remote Terminal — it responds to user messages. `server.ts` is a long-running Node.js server that polls external services (USGS, NWS, etc.) and pushes alerts to MeshCore channels via the same API.
+
+If Remote Terminal has HTTP Basic auth enabled (`MESHCORE_BASIC_AUTH_USERNAME` / `MESHCORE_BASIC_AUTH_PASSWORD`), pass credentials on every `curl` with `-u "$RT_USER:$RT_PASS"` (or `curl -u 'user:pass'`).
+
+## Create the fanout (first time)
+
+```sh
+export RT_URL="http://127.0.0.1:8000"
+export RT_USER="your-username"
+export RT_PASS="your-password"
+
+jq -n --rawfile code bot.py '{
+  "type": "bot",
+  "name": "BlorkoBot",
+  "enabled": true,
+  "config": {"code": $code},
+  "scope": {}
+}' | curl -sS -u "$RT_USER:$RT_PASS" -w "\nHTTP %{http_code}\n" \
+  -X POST -H "Content-Type: application/json" -d @- \
+  "$RT_URL/api/fanout" | tee /tmp/fanout-create.json
+
+jq -r '.id' /tmp/fanout-create.json   # fanout UUID for PATCH below
+```
 
 ## Updating the fanout config
 
@@ -12,8 +34,8 @@ After editing `bot.py`, deploy it by PATCHing the fanout config (replace `<FANOU
 
 ```sh
 jq -n --rawfile code bot.py '{"config": {"code": $code}}' | \
-  curl -s -X PATCH -H "Content-Type: application/json" -d @- \
-  http://127.0.0.1:4042/api/fanout/<FANOUT_ID>
+  curl -sS -u "$RT_USER:$RT_PASS" -X PATCH -H "Content-Type: application/json" -d @- \
+  "$RT_URL/api/fanout/<FANOUT_ID>"
 ```
 
 The PATCH triggers an automatic module reload.

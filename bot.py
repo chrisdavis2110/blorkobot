@@ -575,7 +575,7 @@ def _get_contact_path(sender_key):
 
 
 def cmd_path(path, path_bytes_per_hop, transit_ms=None):
-    suffix = f" - {transit_ms / 1000:.1f}s to BlorkoBot" if transit_ms is not None else " to BlorkoBot"
+    suffix = f" - {transit_ms / 1000:.1f}s" if transit_ms is not None else ""
     if not path:
         return f"direct{suffix}"
     chars_per_hop = (path_bytes_per_hop or 1) * 2
@@ -590,7 +590,7 @@ def cmd_pathx(path, path_bytes_per_hop, sender_key):
     if not p and sender_key:
         p, bph = _get_contact_path(sender_key)
     if not p:
-        return "direct to BlorkoBot"
+        return "direct"
     bph = bph or 1
     chars_per_hop = bph * 2
     hex_path = p.lower()
@@ -678,7 +678,7 @@ def cmd_pathx(path, path_bytes_per_hop, sender_key):
         return msgs
 
     n = len(hops)
-    header = f"{n} {'hop' if n == 1 else 'hops'} to BlorkoBot:"
+    header = f"{n} {'hop' if n == 1 else 'hops'}:"
     msgs = pack(render_lines(True), header)
     if len(msgs) > _MAX_MESSAGES:
         msgs = pack(render_lines(False), header)
