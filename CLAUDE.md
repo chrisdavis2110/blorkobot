@@ -20,7 +20,9 @@ The PATCH triggers an automatic module reload.
 
 ## Design notes
 
-- DMs to the bot reply with `"<message>" - <path info>` (the path reply). `!` commands do NOT work in DMs.
+- Set `_COMMAND_PREFIX` in `bot.py` (e.g. `"!"`) to require a prefix on commands; leave it empty (`""`) to run commands without a prefix (`weather` instead of `!weather`). Legacy `!cmd` still works when the prefix is empty.
+- Per-command settings in `_COMMANDS`: `False` to disable, `True` for default channels (`#bot`, `#test`, plus matching topic channels in `_TOPIC_CHANNELS`), or a list like `["#bot", "#weather"]` to restrict. Aliases follow the canonical command. Chess subcommands (`move`, `board`, `resign`, `elo`) are controlled by `"chess"`.
+- DMs to the bot reply with `"<message>" - <path info>` (the path reply). Commands do NOT work in DMs.
 - MeshCore has a short message limit (~120 bytes), so responses must be terse.
 - Never get into a loop and clog up the mesh with extraneous traffic.
 - Never respond in the Public channel.

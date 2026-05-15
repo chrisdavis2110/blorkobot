@@ -50,12 +50,246 @@ _AI_MODEL = "openai/gpt-oss-20b"  # Groq model id for !ai/!sonnet/!haiku
 
 # Region defaults — many commands are tuned for the SF Bay Area
 _PT = ZoneInfo("America/Los_Angeles")   # local timezone for !sun, !iss, etc.
-_BAY_AREA_CENTER = (37.6, -122.3)       # lat/lon for default-radius aviation lookups
+_CENTER = (34.051080, -118.254353)       # lat/lon for default-radius aviation lookups
 
 # Bot-output profanity filter: regex of explicit /phrases to silently drop from
 # any reply (case-insensitive). Default `(?!)` never matches. Add `|`-separated
 # patterns to enable.
 _FILTERED_WORDS = re.compile(r"(?!)", re.IGNORECASE)
+
+# Command prefix for channel commands (e.g. "!"). Empty = no prefix required.
+# Legacy "!cmd" is still accepted when this is empty.
+_COMMAND_PREFIX = ""
+
+# Per-command config (aliases in _COMMAND_ALIASES):
+#   False — disabled
+#   True  — enabled in #bot, #test, and matching topic channels (see _TOPIC_CHANNELS)
+#   ["#channel", ...] — enabled only in those channels
+_DEFAULT_CHANNELS = ("#bot", "#test")
+
+# Topic channels: commands allowed when the command value is True (not a custom list).
+_TOPIC_CHANNELS = {
+    "#weather": {"weather", "w", "weatherc", "wc", "forecast", "fc",
+                 "forecastc", "fcc", "sun", "tide", "surf", "alerts",
+                 "aqi", "wave"},
+    "#earthquake": {"quake", "quakes", "earthquake", "earthquakes"},
+    "#fire": {"fire", "fires", "wildfire"},
+    "#space": {"space", "solar", "swx", "flare", "hf", "hfconditions", "propagation"},
+    "#path": {"path", "pathx", "pathall", "patha", "longpath", "bigpath",
+              "ping", "test", "dm", "stats"},
+}
+
+_COMMANDS = {
+    # Info & navigation
+    "about": False,
+    "advert": True,
+    "bot": True,
+    "channels": True,
+    "dm": True,
+    "docs": False,
+    "help": True,
+    "help2": False,
+    "help3": False,
+    "help4": False,
+    "help5": False,
+    "path": True,
+    "pathall": True,
+    "pathx": True,
+    "2byte": False,
+    "stats": True,
+    "who": True,
+    # Weather & environment
+    "weather": False,
+    "weatherc": False,
+    "forecast": False,
+    "forecastc": False,
+    "sun": False,
+    "moon": False,
+    "tide": False,
+    "alerts": False,
+    "aqi": False,
+    "pollen": False,
+    "river": False,
+    "wave": False,
+    # Earth & space
+    "quake": False,
+    "fire": False,
+    "space": False,
+    "swx": False,
+    "hf": False,
+    "flare": False,
+    "neo": False,
+    "iss": False,
+    # Aviation
+    "flight": False,
+    "delays": False,
+    "sky": False,
+    "mil": False,
+    "blimp": False,
+    "tfr": False,
+    # Utilities & games
+    "511": False,
+    "8ball": True,
+    "ai": False,
+    "sonnet": False,
+    "haiku": False,
+    "chess": False,
+    "convert": True,
+    "time": False,
+    "zip": False,
+    "set": False,
+    "get": False,
+    "del": False,
+    "power": False,
+    "score": False,
+    # Fun & reference
+    "advice": False,
+    "apod": False,
+    "catfact": True,
+    "cocktail": True,
+    "country": True,
+    "crypto": True,
+    "dadjoke": True,
+    "define": True,
+    "fact": True,
+    "futurama": False,
+    "joke": True,
+    "leaderboard": False,
+    "otd": False,
+    "quote": True,
+    "riddle": True,
+    "simpsons": False,
+    "stock": True,
+    "trivia": False,
+    "wiki": False,
+}
+
+# Maps trigger words (including aliases) to canonical ids in _COMMANDS.
+_COMMAND_ALIASES = {
+    "ping": "path",
+    "pathbot": "path",
+    "test": "path",
+    "patha": "pathall",
+    "longpath": "pathx",
+    "bigpath": "pathx",
+    "path2byte": "path",
+    "path3byte": "path",
+    "w": "weather",
+    "wc": "weatherc",
+    "fc": "forecast",
+    "fcc": "forecastc",
+    "surf": "tide",
+    "spaceweather": "space",
+    "solar": "space",
+    "spacewx": "swx",
+    "hfconditions": "hf",
+    "propagation": "hf",
+    "flares": "flare",
+    "asteroid": "neo",
+    "asteroids": "neo",
+    "fires": "fire",
+    "wildfire": "fire",
+    "quakes": "quake",
+    "earthquake": "quake",
+    "earthquakes": "quake",
+    "flights": "flight",
+    "delay": "delays",
+    "skies": "sky",
+    "military": "mil",
+    "blimps": "blimp",
+    "tfrs": "tfr",
+    "temp": "tfr",
+    "onthisday": "otd",
+    "today": "otd",
+    "funfact": "fact",
+    "inspire": "quote",
+    "cat": "catfact",
+    "nasa": "apod",
+    "drink": "cocktail",
+    "outage": "power",
+    "outages": "power",
+    "lb": "leaderboard",
+    "move": "chess",
+    "board": "chess",
+    "resign": "chess",
+    "elo": "chess",
+}
+
+
+def _p(cmd: str) -> str:
+    """Format a command name for help text and usage messages."""
+    name = cmd.lstrip("!")
+    return f"{_COMMAND_PREFIX}{name}" if _COMMAND_PREFIX else name
+
+
+def _cmd_bare(lower: str) -> str | None:
+    """Return lowercased message text with the command prefix stripped, or None if not a command."""
+    if _COMMAND_PREFIX:
+        pl = _COMMAND_PREFIX.lower()
+        if not lower.startswith(pl):
+            return None
+        return lower[len(pl):]
+    if lower.startswith("!"):
+        return lower[1:]
+    return lower
+
+
+def _cmd_match(bare, *names):
+    return bare in names
+
+
+def _cmd_starts(bare, *names):
+    if bare in names:
+        return True
+    return any(bare.startswith(n + " ") for n in names)
+
+
+def _cmd_id(word: str) -> str:
+    return _COMMAND_ALIASES.get(word, word)
+
+
+def _cmd_enabled(cmd_id: str) -> bool:
+    return _COMMANDS.get(_cmd_id(cmd_id), True) is not False
+
+
+def _listening_channels() -> set[str]:
+    ch = set(_DEFAULT_CHANNELS) | set(_TOPIC_CHANNELS)
+    for val in _COMMANDS.values():
+        if isinstance(val, list):
+            ch.update(val)
+    return ch
+
+
+def _cmd_allowed_in_channel(cmd_id: str, channel_name: str, bare: str | None) -> bool:
+    val = _COMMANDS.get(_cmd_id(cmd_id), True)
+    if val is False:
+        return False
+    if isinstance(val, list):
+        return channel_name in val
+    if channel_name in _DEFAULT_CHANNELS:
+        return True
+    triggers = _TOPIC_CHANNELS.get(channel_name)
+    if triggers is not None:
+        if bare is None:
+            return False
+        return bare.split()[0] in triggers
+    return False
+
+
+def _cmd_hit(
+    cmd_id: str,
+    bare: str,
+    *names: str,
+    starts: bool = False,
+    channel_name: str | None = None,
+) -> bool:
+    if not _cmd_enabled(cmd_id):
+        return False
+    if channel_name is not None and not _cmd_allowed_in_channel(cmd_id, channel_name, bare):
+        return False
+    if starts:
+        return _cmd_match(bare, *names) or _cmd_starts(bare, *names)
+    return _cmd_match(bare, *names)
 
 
 def _fetch(url, timeout=8, headers=None):
@@ -281,25 +515,38 @@ def cmd_channels():
 
 def cmd_help():
     return (
-        "!docs !channels !path !2byte !dm !about !weather !wc !forecast !fcc "
-        "!sun !moon !tide !alerts !score !power (!help2)"
+        f"{_p('docs')} {_p('channels')} {_p('path')} {_p('2byte')} {_p('dm')} {_p('about')} "
+        f"{_p('weather')} {_p('wc')} {_p('forecast')} {_p('fcc')} {_p('sun')} {_p('moon')} "
+        f"{_p('tide')} {_p('alerts')} {_p('score')} {_p('power')} ({_p('help2')})"
     )
 
 
 def cmd_help2():
-    return "!ai !sonnet !haiku !stock !trivia !iss !space !swx !flare !neo !quake !fire !hf !pollen !convert !8ball !crypto (!help3)"
+    return (
+        f"{_p('ai')} {_p('sonnet')} {_p('haiku')} {_p('stock')} {_p('trivia')} {_p('iss')} "
+        f"{_p('space')} {_p('swx')} {_p('flare')} {_p('neo')} {_p('quake')} {_p('fire')} "
+        f"{_p('hf')} {_p('pollen')} {_p('convert')} {_p('8ball')} {_p('crypto')} ({_p('help3')})"
+    )
 
 
 def cmd_help3():
-    return "!define !wiki !dadjoke !time !aqi !fact !joke !quote !advice !catfact (!help4)"
+    return (
+        f"{_p('define')} {_p('wiki')} {_p('dadjoke')} {_p('time')} {_p('aqi')} {_p('fact')} "
+        f"{_p('joke')} {_p('quote')} {_p('advice')} {_p('catfact')} ({_p('help4')})"
+    )
 
 
 def cmd_help4():
-    return "!riddle !country !apod !cocktail !futurama !simpsons !river !wave !otd !zip !who !pathx !set !get !del !advert !stats !leaderboard !chess (!help5)"
+    return (
+        f"{_p('riddle')} {_p('country')} {_p('apod')} {_p('cocktail')} {_p('futurama')} "
+        f"{_p('simpsons')} {_p('river')} {_p('wave')} {_p('otd')} {_p('zip')} {_p('who')} "
+        f"{_p('pathx')} {_p('set')} {_p('get')} {_p('del')} {_p('advert')} {_p('stats')} "
+        f"{_p('leaderboard')} {_p('chess')} ({_p('help5')})"
+    )
 
 
 def cmd_help5():
-    return "!flight !delays !sky !mil !blimp !tfr"
+    return f"{_p('flight')} {_p('delays')} {_p('sky')} {_p('mil')} {_p('blimp')} {_p('tfr')}"
 
 
 def cmd_docs():
@@ -559,7 +806,7 @@ def cmd_dm(sender_key, sender_name, path, path_bytes_per_hop):
 
 
 def cmd_about():
-    return "\U0001f44b BlorkoBot by Blorko - unofficial bot for Bay Area MeshCore. I respond in #bot #test and DMs. Try !docs"
+    return f"\U0001f44b BlorkoBot by Blorko - unofficial bot for Bay Area MeshCore. I respond in #bot #test and DMs. Try {_p('docs')}"
 
 
 _WEATHER_EMOJI_MAP = {
@@ -579,7 +826,7 @@ def _wttr_query(location):
 
 def cmd_weather(location, units="f"):
     if not location:
-        return "usage: !weather <location or zip>"
+        return f"usage: {_p('weather')} <location or zip>"
     try:
         encoded = urllib.parse.quote(_wttr_query(location))
         u_flag = "u" if units == "f" else "m"
@@ -635,7 +882,7 @@ def cmd_weather(location, units="f"):
 
 def cmd_forecast(location, units="f"):
     if not location:
-        return "usage: !forecast <location or zip>"
+        return f"usage: {_p('forecast')} <location or zip>"
     try:
         encoded = urllib.parse.quote(_wttr_query(location))
         u_flag = "u" if units == "f" else "m"
@@ -674,7 +921,7 @@ def cmd_forecast(location, units="f"):
 
 def cmd_sun(location):
     if not location:
-        return "usage: !sun <location or zip>"
+        return f"usage: {_p('sun')} <location or zip>"
     try:
         encoded = urllib.parse.quote(location)
         fmt = "\U0001f305 Rise %S, \U0001f303 Set %s"
@@ -752,7 +999,7 @@ def _find_tide_station(name):
 
 def cmd_tide(query):
     if not query:
-        return "usage: !tide <name or station_id>"
+        return f"usage: {_p('tide')} <name or station_id>"
     query = query.strip()
     station_label = None
     if query.isdigit():
@@ -791,7 +1038,7 @@ def cmd_tide(query):
 
 def cmd_alerts(state):
     if not state or len(state) != 2 or not state.isalpha():
-        return "usage: !alerts <2-letter state code>"
+        return f"usage: {_p('alerts')} <2-letter state code>"
     state = state.upper()
     try:
         data = _fetch_json(
@@ -830,7 +1077,7 @@ def cmd_convert(args):
     parts = args.strip().split()
     if len(parts) != 3:
         units = ", ".join(sorted({u for pair in _CONVERSIONS for u in pair}))
-        return f"usage: !convert <val> <from> <to> — units: {units}, f, c"
+        return f"usage: {_p('convert')} <val> <from> <to> — units: {units}, f, c"
     try:
         value = float(parts[0])
     except ValueError:
@@ -864,7 +1111,7 @@ def cmd_8ball():
 def cmd_stock(symbol):
     symbol = symbol.strip().upper()
     if not symbol:
-        return "usage: !stock <symbol>"
+        return f"usage: {_p('stock')} <symbol>"
     try:
         url = (
             f"https://query1.finance.yahoo.com/v8/finance/chart/"
@@ -894,7 +1141,7 @@ _CRYPTO_IDS = {
 def cmd_crypto(coin):
     coin = coin.strip().lower()
     if not coin:
-        return "usage: !crypto <coin>"
+        return f"usage: {_p('crypto')} <coin>"
     coin_id = _CRYPTO_IDS.get(coin, coin)
     try:
         url = (
@@ -915,7 +1162,7 @@ def cmd_crypto(coin):
 def cmd_define(word):
     word = word.strip().lower()
     if not word:
-        return "usage: !define <word>"
+        return f"usage: {_p('define')} <word>"
     try:
         url = f"https://api.dictionaryapi.dev/api/v2/entries/en/{urllib.parse.quote(word)}"
         data = _fetch_json(url)
@@ -940,7 +1187,7 @@ def cmd_dadjoke():
 def cmd_wiki(query):
     query = query.strip()
     if not query:
-        return "usage: !wiki <topic>"
+        return f"usage: {_p('wiki')} <topic>"
     try:
         url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{urllib.parse.quote(query)}"
         data = _fetch_json(url)
@@ -1035,7 +1282,7 @@ def cmd_riddle():
 def cmd_country(name):
     name = name.strip()
     if not name:
-        return "usage: !country <name>"
+        return f"usage: {_p('country')} <name>"
     try:
         url = (
             f"https://restcountries.com/v3.1/name/{urllib.parse.quote(name)}"
@@ -1142,7 +1389,7 @@ def _save_memory(data):
 def cmd_set(args):
     parts = args.strip().split(None, 1)
     if len(parts) < 2:
-        return "usage: !set <key> <value>"
+        return f"usage: {_p('set')} <key> <value>"
     key, value = parts[0].lower(), parts[1]
     if len(key) > 32:
         return "key too long (32 char max)"
@@ -1159,7 +1406,7 @@ def cmd_set(args):
 def cmd_get(key):
     key = key.strip().lower()
     if not key:
-        return "usage: !get <key>"
+        return f"usage: {_p('get')} <key>"
     mem = _load_memory()
     value = mem.get(key)
     if value is None:
@@ -1170,7 +1417,7 @@ def cmd_get(key):
 def cmd_del(key):
     key = key.strip().lower()
     if not key:
-        return "usage: !del <key>"
+        return f"usage: {_p('del')} <key>"
     mem = _load_memory()
     if key not in mem:
         return f"no value for '{key}'"
@@ -1263,7 +1510,12 @@ def _check_trivia_answer(channel, sender_name, text):
     if len(t) == 1 and t in "ABCD":
         letter = t
     else:
-        m = re.match(r'^!(?:guess|answer)\s+([A-Da-d])', text, re.IGNORECASE)
+        guess_pat = (
+            rf'^{re.escape(_COMMAND_PREFIX)}(?:guess|answer)\s+([A-Da-d])'
+            if _COMMAND_PREFIX
+            else r'^!?(?:guess|answer)\s+([A-Da-d])'
+        )
+        m = re.match(guess_pat, text, re.IGNORECASE)
         if m:
             letter = m.group(1).upper()
 
@@ -1289,7 +1541,7 @@ def cmd_leaderboard():
     """Show trivia leaderboard."""
     scores = _load_trivia_scores()
     if not scores:
-        return "no trivia scores yet \u2014 try !trivia"
+        return f"no trivia scores yet \u2014 try {_p('trivia')}"
     ranked = sorted(scores.items(), key=lambda x: -x[1])[:10]
     parts = [f"{i+1}.{name}({pts})" for i, (name, pts) in enumerate(ranked)]
     return f"\U0001f3c6 {' '.join(parts)}"
@@ -1491,18 +1743,18 @@ def cmd_chess(arg, sender_name=None):
     """Start a new chess game or show help."""
     state = _load_chess()
     if state and arg != "new":
-        return "game in progress \u2014 !move, !board, !resign, or !chess new"
+        return f"game in progress \u2014 {_p('move')}, {_p('board')}, {_p('resign')}, or {_p('chess')} new"
     state = _new_chess_state()
     _save_chess(state)
     board = _render_board(state)
-    return [board, "New game! You're white. !move e2e4"]
+    return [board, f"New game! You're white. {_p('move')} e2e4"]
 
 
 def cmd_chess_move(uci_move, sender_name=None):
     """Make a move."""
     state = _load_chess()
     if not state:
-        return "no game \u2014 start with !chess"
+        return f"no game \u2014 start with {_p('chess')}"
     if state["turn"] != "w":
         return "wait for the bot's move"
     # Apply player's move
@@ -1542,7 +1794,7 @@ def cmd_chess_board():
     """Show the current board."""
     state = _load_chess()
     if not state:
-        return "no game \u2014 start with !chess"
+        return f"no game \u2014 start with {_p('chess')}"
     board = _render_board(state)
     last = state["history"][-6:]
     history = " ".join(last) if last else "no moves yet"
@@ -1567,7 +1819,7 @@ def cmd_chess_elo(arg=None):
         try:
             elo = int(arg)
         except ValueError:
-            return "usage: !elo <800-2400>"
+            return f"usage: {_p('elo')} <800-2400>"
         elo = max(800, min(2400, elo))
         depth = _elo_to_depth(elo)
         if not state:
@@ -1578,8 +1830,8 @@ def cmd_chess_elo(arg=None):
         return f"\u265a ELO set to ~{elo} (depth {depth})"
     # Show current
     if state:
-        return f"\u265a ELO ~{state['elo']} (depth {state['depth']}). !elo <800-2400> to change"
-    return f"\u265a Default ELO 1000. !elo <800-2400> to change"
+        return f"\u265a ELO ~{state['elo']} (depth {state['depth']}). {_p('elo')} <800-2400> to change"
+    return f"\u265a Default ELO 1000. {_p('elo')} <800-2400> to change"
 
 
 def cmd_space():
@@ -1641,7 +1893,7 @@ def cmd_neo():
 
 def cmd_time(query):
     if not query:
-        return "usage: !time <city>"
+        return f"usage: {_p('time')} <city>"
     try:
         encoded = urllib.parse.quote(query)
         url = f"https://wttr.in/{encoded}?format=%Z+%l"
@@ -1924,7 +2176,7 @@ def _aqi_level(aqi_val):
 
 def cmd_aqi(query):
     if not query:
-        return "usage: !aqi <city or zip>"
+        return f"usage: {_p('aqi')} <city or zip>"
     try:
         geo = _geocode(query)
         if not geo:
@@ -2003,7 +2255,7 @@ def cmd_flare():
 def cmd_river(query):
     """Real-time river/stream levels from USGS."""
     if not query:
-        return "usage: !river <site name or USGS site #>"
+        return f"usage: {_p('river')} <site name or USGS site #>"
     query = query.strip()
     try:
         if query.isdigit():
@@ -2057,7 +2309,7 @@ def cmd_river(query):
 def cmd_wave(query):
     """Ocean wave conditions from Open-Meteo Marine API."""
     if not query:
-        return "usage: !wave <location>"
+        return f"usage: {_p('wave')} <location>"
     try:
         geo = _geocode(query)
         if not geo:
@@ -2111,7 +2363,7 @@ def cmd_hf():
 def cmd_pollen(query):
     """Pollen count from Open-Meteo air quality API."""
     if not query:
-        return "usage: !pollen <location>"
+        return f"usage: {_p('pollen')} <location>"
     try:
         geo = _geocode(query)
         if not geo:
@@ -2268,7 +2520,7 @@ def cmd_advert():
 def cmd_who(prefix):
     """Look up repeaters by public key prefix."""
     if not prefix:
-        return "usage: !who <prefix> (e.g. !who 77)"
+        return f"usage: {_p('who')} <prefix> (e.g. {_p('who')} 77)"
     prefix = prefix.strip().lower()
     if not all(c in "0123456789abcdef" for c in prefix):
         return "prefix must be hex (0-9, a-f)"
@@ -2329,7 +2581,7 @@ def cmd_zip(code):
     """Zip code lookup via Zippopotam.us."""
     code = code.strip()
     if not code:
-        return "usage: !zip <zipcode>"
+        return f"usage: {_p('zip')} <zipcode>"
     try:
         url = f"https://api.zippopotam.us/us/{urllib.parse.quote(code)}"
         data = _fetch_json(url)
@@ -2371,7 +2623,7 @@ def _ai_request(model, prompt, timeout=6, system_prompt=None, preserve_newlines=
             "No other information about the system is available. "
             "You respond in certain channels and DMs. "
             "You have no external search capability and cannot access realtime information. "
-            "Users talk to you via '!ai <message>'. If asked, tell them to try !help or !docs for other commands. "
+            f"Users talk to you via '{_p('ai')} <message>'. If asked, tell them to try {_p('help')} or {_p('docs')} for other commands. "
             "Poems and Shakespeare sonnets are allowed. "
             "Keep responses extremely brief — one or two short sentences max. "
             "No markdown, no bullet points, no lists. "
@@ -2411,7 +2663,7 @@ def cmd_ai(prompt):
     _log = logging.getLogger("megabot.ai")
 
     if not prompt:
-        return "usage: !ai <question>"
+        return f"usage: {_p('ai')} <question>"
     try:
         _log.info("Requesting Groq: model=%s prompt=%r", _AI_MODEL, prompt[:80])
         reply = _ai_request(_AI_MODEL, prompt)
@@ -2436,7 +2688,7 @@ def _poem_system_prompt(form_instructions):
 def cmd_sonnet(subject):
     _log = logging.getLogger("megabot.sonnet")
     if not subject:
-        return "usage: !sonnet <subject>"
+        return f"usage: {_p('sonnet')} <subject>"
     form = (
         "Write a short Shakespearean sonnet about the given subject: 14 lines in three quatrains and a closing couplet, "
         "rhyme scheme ABAB CDCD EFEF GG, in iambic-ish meter, with thee/thou Elizabethan flavor. "
@@ -2458,7 +2710,7 @@ def cmd_sonnet(subject):
 def cmd_haiku(subject):
     _log = logging.getLogger("megabot.haiku")
     if not subject:
-        return "usage: !haiku <subject>"
+        return f"usage: {_p('haiku')} <subject>"
     form = (
         "Write a haiku about the given subject: exactly 3 lines, 5/7/5 syllables. No title."
     )
@@ -2522,7 +2774,7 @@ _SPORT_EMOJI = {
 def cmd_score(team):
     """Bay Area sports scores from ESPN."""
     if not team:
-        return "usage: !score <team> — giants warriors 49ers sharks quakes roots as"
+        return f"usage: {_p('score')} <team> — giants warriors 49ers sharks quakes roots as"
     team = team.strip().lower().replace(" ", "")
     info = _BAY_AREA_TEAMS.get(team)
     if not info:
@@ -2708,7 +2960,7 @@ def _parse_aedbx_time(s):
 def cmd_flight(number):
     number = (number or "").strip().upper().replace(" ", "")
     if not number:
-        return "Usage: !flight <number> (e.g. !flight UA123)"
+        return f"Usage: {_p('flight')} <number> (e.g. {_p('flight')} UA123)"
     # Validate: 2-3 letters (IATA/ICAO airline) + 1-5 digits, optional trailing letter
     if not re.fullmatch(r"[A-Z]{2,3}\d{1,5}[A-Z]?", number):
         return "bad flight number (e.g. UA123, AAL456)"
@@ -2928,7 +3180,7 @@ def _adsb_track_update(acs):
 def _adsb_area(loc):
     """Resolve area: returns (label, lat, lon, radius_nm) or None."""
     if not loc:
-        return "Bay Area", _BAY_AREA_CENTER[0], _BAY_AREA_CENTER[1], 40
+        return "SoCal", _CENTER[0], _CENTER[1], 40
     try:
         geo = _geocode(loc)
     except Exception:
@@ -3223,28 +3475,13 @@ def bot(**kwargs) -> str | list[str] | None:
 
     text = message_text.strip()
     lower = text.lower()
+    bare = _cmd_bare(lower)
     channel_name = kwargs.get("channel_name")
     channel_key = kwargs.get("channel_key")
     is_dm = not channel_name
 
-    # Only respond in allowed channels (and DMs)
-    _TOPIC_CHANNELS = {
-        "#weather": {"!weather", "!w", "!weatherc", "!wc", "!forecast", "!fc",
-                      "!forecastc", "!fcc", "!sun", "!tide", "!surf", "!alerts",
-                      "!aqi", "!wave", "weather"},
-        "#earthquake": {"!quake", "!quakes", "!earthquake", "!earthquakes"},
-        "#fire": {"!fire", "!fires", "!wildfire"},
-        "#space": {"!space", "!solar", "!swx", "!flare", "!hf", "!hfconditions", "!propagation"},
-        "#path": {"!path", "!pathx", "!pathall", "!patha", "!longpath", "!bigpath", "!ping", "ping", "test", "!test", "!dm", "!stats"},
-    }
-    if channel_name and channel_name not in ("#test", "#bot") \
-            and channel_name not in _TOPIC_CHANNELS:
+    if channel_name and channel_name not in _listening_channels():
         return None
-    # Topic channels: only respond to their relevant commands
-    if channel_name in _TOPIC_CHANNELS:
-        cmd_word = lower.split()[0] if lower else ""
-        if cmd_word not in _TOPIC_CHANNELS[channel_name]:
-            return None
 
     # Never respond to our own outgoing messages
     if is_outgoing:
@@ -3260,20 +3497,32 @@ def bot(**kwargs) -> str | list[str] | None:
         return _stamp(f'"{msg_tail}" - {path_info}')
 
     # Trivia answer detection (before command matching)
-    if channel_name and not lower.startswith("!trivia"):
+    if channel_name and bare and _cmd_enabled("trivia") \
+            and _cmd_allowed_in_channel("trivia", channel_name, bare) \
+            and not bare.startswith("trivia"):
         trivia_reply = _check_trivia_answer(channel_name, sender_name, text)
         if trivia_reply is not None:
             return _stamp(trivia_reply)
+
+    if bare is None:
+        return None
+
+    def _hit(cmd_id, *args, starts=False):
+        return _cmd_hit(cmd_id, bare, *args, starts=starts, channel_name=channel_name)
 
     def _arg(default=None):
         return text.split(" ", 1)[1].strip() if " " in text else default
 
     def _safe(msg):
-        """Strip leading ! from responses to prevent self-triggering loops."""
+        """Strip command prefix from responses to prevent self-triggering loops."""
         if isinstance(msg, list):
             return [_safe(m) for m in msg]
-        if isinstance(msg, str) and msg.lstrip().startswith("!"):
-            return msg.lstrip()[1:]
+        if isinstance(msg, str):
+            s = msg.lstrip()
+            if _COMMAND_PREFIX and s.startswith(_COMMAND_PREFIX):
+                return s[len(_COMMAND_PREFIX):]
+            if s.startswith("!"):
+                return s[1:]
         return msg
 
     def _reply(result):
@@ -3286,11 +3535,11 @@ def bot(**kwargs) -> str | list[str] | None:
             return _safe([f"{mention}{m}" for m in stamped])
         return _safe(f"{mention}{stamped}")
 
-    if lower in ("!path", "!ping", "ping", "pathbot", "test", "!test"):
+    if _hit("path", "path", "ping", "pathbot", "test"):
         return _reply(cmd_path(path, path_bytes_per_hop, transit_ms))
-    if lower in ("!pathall", "!patha"):
+    if _hit("pathall", "pathall", "patha"):
         return _reply(cmd_pathall(channel_key, sender_key, sender_name, sender_timestamp, message_text, is_dm))
-    if lower in ("!pathx", "!longpath", "!bigpath"):
+    if _hit("pathx", "pathx", "longpath", "bigpath"):
         result = cmd_pathx(path, path_bytes_per_hop, sender_key)
         if isinstance(result, str):
             return _reply(result)
@@ -3301,169 +3550,168 @@ def bot(**kwargs) -> str | list[str] | None:
         if sender_name and not is_dm and filtered:
             filtered = [f"@[{sender_name}] {filtered[0]}"] + filtered[1:]
         return _safe(filtered)
-    if lower in ("!path2byte", "!path3byte"):
-        return _stamp("Multi-byte paths will be shown automatically with !path")
-    if lower == "!2byte":
+    if _hit("path", "path2byte", "path3byte"):
+        return _stamp(f"Multi-byte paths will be shown automatically with {_p('path')}")
+    if _hit("2byte", "2byte"):
         lines = ["https://bayareameshcore.org/blog/moving-to-2-byte-prefixes/"]
         bar = _2byte_progress_bar(*_count_repeater_types())
         if bar:
             lines.append(bar)
         return _stamp(lines)
-    if lower == "!dm":
+    if _hit("dm", "dm"):
         return _reply(cmd_dm(sender_key, sender_name, path, path_bytes_per_hop))
-    if lower == "!channels":
+    if _hit("channels", "channels"):
         return _stamp(cmd_channels())
-    if lower == "!about":
+    if _hit("about", "about"):
         return _stamp(cmd_about())
-    if lower == "!docs":
+    if _hit("docs", "docs"):
         return _stamp(cmd_docs())
-    if lower == "!help":
+    if _hit("help", "help"):
         return _stamp(cmd_help())
-    if lower == "!help2":
+    if _hit("help2", "help2"):
         return _stamp(cmd_help2())
-    if lower == "!moon":
+    if _hit("moon", "moon"):
         return _stamp(cmd_moon())
-    if lower in ("!weather", "!w") or lower.startswith(("!weather ", "!w ", "weather ")):
+    if _hit("weather", "weather", "w", starts=True):
         loc = _arg()
         if not loc:
-            return _reply("Usage: !weather <location> (e.g. !weather sf)")
+            return _reply(f"Usage: {_p('weather')} <location> (e.g. {_p('weather')} sf)")
         return _reply(cmd_weather(_expand_location(loc)))
-    if lower in ("!weatherc", "!wc") or lower.startswith(("!weatherc ", "!wc ")):
+    if _hit("weatherc", "weatherc", "wc", starts=True):
         loc = _arg()
         if not loc:
-            return _reply("Usage: !weatherc <location> (e.g. !weatherc sf)")
+            return _reply(f"Usage: {_p('weatherc')} <location> (e.g. {_p('weatherc')} sf)")
         return _reply(cmd_weather(_expand_location(loc), units="c"))
-    if lower == "!forecast" or lower.startswith("!forecast ") or lower == "!fc" or lower.startswith("!fc "):
+    if _hit("forecast", "forecast", "fc", starts=True):
         loc = _arg()
         if not loc:
-            return _reply("Usage: !forecast <location> (e.g. !forecast sf)")
+            return _reply(f"Usage: {_p('forecast')} <location> (e.g. {_p('forecast')} sf)")
         return _reply(cmd_forecast(_expand_location(loc)))
-    if lower == "!forecastc" or lower.startswith("!forecastc ") or lower == "!fcc" or lower.startswith("!fcc "):
+    if _hit("forecastc", "forecastc", "fcc", starts=True):
         loc = _arg()
         if not loc:
-            return _reply("Usage: !forecastc <location> (e.g. !forecastc sf)")
+            return _reply(f"Usage: {_p('forecastc')} <location> (e.g. {_p('forecastc')} sf)")
         return _reply(cmd_forecast(_expand_location(loc), units="c"))
-    if lower == "!sun" or lower.startswith("!sun "):
+    if _hit("sun", "sun", starts=True):
         loc = _arg()
         if not loc:
-            return _reply("Usage: !sun <location> (e.g. !sun sf)")
+            return _reply(f"Usage: {_p('sun')} <location> (e.g. {_p('sun')} sf)")
         return _reply(cmd_sun(_expand_location(loc)))
-    if lower == "!tide" or lower.startswith("!tide ") or lower == "!surf" or lower.startswith("!surf "):
+    if _hit("tide", "tide", "surf", starts=True):
         loc = _arg()
         if not loc:
-            return _reply("Usage: !tide <location> (e.g. !tide sf)")
+            return _reply(f"Usage: {_p('tide')} <location> (e.g. {_p('tide')} sf)")
         return _reply(cmd_tide(_expand_location(loc)))
-    if lower == "!alerts" or lower.startswith("!alerts "):
+    if _hit("alerts", "alerts", starts=True):
         return _stamp(cmd_alerts(_arg("CA")))
-    if lower == "!time" or lower.startswith("!time "):
+    if _hit("time", "time", starts=True):
         return _stamp(cmd_time(_expand_location(_arg(""))))
-    if lower == "!convert" or lower.startswith("!convert "):
+    if _hit("convert", "convert", starts=True):
         return _stamp(cmd_convert(_arg("")))
-    if lower == "!8ball" or lower.startswith("!8ball "):
+    if _hit("8ball", "8ball", starts=True):
         return _stamp(cmd_8ball())
-    if lower == "!ai" or lower.startswith("!ai "):
+    if _hit("ai", "ai", starts=True):
         return _stamp(cmd_ai(_arg("")))
-    if lower == "!sonnet" or lower.startswith("!sonnet "):
+    if _hit("sonnet", "sonnet", starts=True):
         return _stamp(cmd_sonnet(_arg("")), preserve_newlines=True)
-    if lower == "!haiku" or lower.startswith("!haiku "):
+    if _hit("haiku", "haiku", starts=True):
         return _stamp(cmd_haiku(_arg("")), preserve_newlines=True)
-    if lower == "!stock" or lower.startswith("!stock "):
+    if _hit("stock", "stock", starts=True):
         return _stamp(cmd_stock(_arg("")))
-    if lower == "!crypto" or lower.startswith("!crypto "):
+    if _hit("crypto", "crypto", starts=True):
         return _stamp(cmd_crypto(_arg("")))
-    if lower == "!define" or lower.startswith("!define "):
+    if _hit("define", "define", starts=True):
         return _stamp(cmd_define(_arg("")))
-    if lower == "!wiki" or lower.startswith("!wiki "):
+    if _hit("wiki", "wiki", starts=True):
         return _stamp(cmd_wiki(_arg("")))
-    if lower == "!trivia" or lower.startswith("!trivia "):
+    if _hit("trivia", "trivia", starts=True):
         return _stamp(cmd_trivia(_arg(), channel=channel_name))
-    if lower == "!iss" or lower.startswith("!iss "):
+    if _hit("iss", "iss", starts=True):
         return _stamp(cmd_iss(_expand_location(_arg(""))))
-    if lower in ("!space", "!spaceweather", "!solar"):
+    if _hit("space", "space", "spaceweather", "solar"):
         return _stamp(cmd_space())
-    if lower in ("!swx", "!spacewx"):
+    if _hit("swx", "swx", "spacewx"):
         return _stamp(cmd_swx())
-    if lower in ("!hf", "!hfconditions", "!propagation"):
+    if _hit("hf", "hf", "hfconditions", "propagation"):
         return _stamp(cmd_hf())
-    if lower in ("!flare", "!flares"):
+    if _hit("flare", "flare", "flares"):
         return _stamp(cmd_flare())
-    if lower in ("!neo", "!asteroid", "!asteroids"):
+    if _hit("neo", "neo", "asteroid", "asteroids"):
         return _stamp(cmd_neo())
-    if lower in ("!fire", "!fires", "!wildfire"):
+    if _hit("fire", "fire", "fires", "wildfire"):
         return _stamp(cmd_fire())
-    if lower in ("!quake", "!quakes", "!earthquake", "!earthquakes") or \
-            lower.startswith(("!quake ", "!quakes ", "!earthquake ", "!earthquakes ")):
+    if _hit("quake", "quake", "quakes", "earthquake", "earthquakes", starts=True):
         return _stamp(cmd_quake(_arg()))
-    if lower == "!511" or lower.startswith("!511 "):
+    if _hit("511", "511", starts=True):
         return _reply(cmd_511(_arg("")))
-    if lower == "!aqi" or lower.startswith("!aqi "):
+    if _hit("aqi", "aqi", starts=True):
         loc = _arg()
         if not loc:
-            return _reply("Usage: !aqi <location> (e.g. !aqi sf)")
+            return _reply(f"Usage: {_p('aqi')} <location> (e.g. {_p('aqi')} sf)")
         return _reply(cmd_aqi(_expand_location(loc)))
-    if lower == "!pollen" or lower.startswith("!pollen "):
+    if _hit("pollen", "pollen", starts=True):
         loc = _arg()
         if not loc:
-            return _reply("Usage: !pollen <location> (e.g. !pollen sf)")
+            return _reply(f"Usage: {_p('pollen')} <location> (e.g. {_p('pollen')} sf)")
         return _reply(cmd_pollen(_expand_location(loc)))
-    if lower == "!river" or lower.startswith("!river "):
+    if _hit("river", "river", starts=True):
         return _stamp(cmd_river(_arg("")))
-    if lower == "!wave" or lower.startswith("!wave "):
+    if _hit("wave", "wave", starts=True):
         loc = _arg()
         if not loc:
-            return _reply("Usage: !wave <location> (e.g. !wave sf)")
+            return _reply(f"Usage: {_p('wave')} <location> (e.g. {_p('wave')} sf)")
         return _reply(cmd_wave(_expand_location(loc)))
-    if lower == "!dadjoke":
+    if _hit("dadjoke", "dadjoke"):
         return _stamp(cmd_dadjoke())
-    if lower == "!help3":
+    if _hit("help3", "help3"):
         return _stamp(cmd_help3())
-    if lower in ("!fact", "!funfact"):
+    if _hit("fact", "fact", "funfact"):
         return _stamp(cmd_fact())
-    if lower == "!joke" or lower.startswith("!joke "):
+    if _hit("joke", "joke", starts=True):
         return _stamp(cmd_joke(_arg("")))
-    if lower in ("!quote", "!inspire"):
+    if _hit("quote", "quote", "inspire"):
         return _stamp(cmd_quote())
-    if lower in ("!advice",):
+    if _hit("advice", "advice"):
         return _stamp(cmd_advice())
-    if lower in ("!catfact", "!cat"):
+    if _hit("catfact", "catfact", "cat"):
         return _stamp(cmd_catfact())
-    if lower in ("!riddle",):
+    if _hit("riddle", "riddle"):
         return _stamp(cmd_riddle())
-    if lower == "!country" or lower.startswith("!country "):
+    if _hit("country", "country", starts=True):
         return _stamp(cmd_country(_arg("")))
-    if lower in ("!apod", "!nasa"):
+    if _hit("apod", "apod", "nasa"):
         return _stamp(cmd_apod())
-    if lower in ("!cocktail", "!drink"):
+    if _hit("cocktail", "cocktail", "drink"):
         return _stamp(cmd_cocktail())
-    if lower == "!futurama":
+    if _hit("futurama", "futurama"):
         return _stamp(cmd_futurama())
-    if lower == "!simpsons":
+    if _hit("simpsons", "simpsons"):
         return _stamp(cmd_simpsons())
-    if lower == "!help4":
+    if _hit("help4", "help4"):
         return _stamp(cmd_help4())
-    if lower == "!help5":
+    if _hit("help5", "help5"):
         return _stamp(cmd_help5())
-    if lower in ("!flight", "!flights") or lower.startswith(("!flight ", "!flights ")):
+    if _hit("flight", "flight", "flights", starts=True):
         arg = _arg("")
         if not arg:
-            return _stamp("Usage: !flight <number> (e.g. !flight UA123)")
+            return _stamp(f"Usage: {_p('flight')} <number> (e.g. {_p('flight')} UA123)")
         return _stamp(cmd_flight(arg))
-    if lower in ("!delays", "!delay") or lower.startswith(("!delays ", "!delay ")):
+    if _hit("delays", "delays", "delay", starts=True):
         return _stamp(cmd_delays(_arg("")))
-    if lower in ("!sky", "!skies") or lower.startswith(("!sky ", "!skies ")):
+    if _hit("sky", "sky", "skies", starts=True):
         loc = _arg()
         return _stamp(cmd_sky(_expand_location(loc) if loc else None))
-    if lower in ("!mil", "!military") or lower.startswith(("!mil ", "!military ")):
+    if _hit("mil", "mil", "military", starts=True):
         loc = _arg()
         return _stamp(cmd_mil(_expand_location(loc) if loc else None))
-    if lower in ("!blimp", "!blimps") or lower.startswith(("!blimp ", "!blimps ")):
+    if _hit("blimp", "blimp", "blimps", starts=True):
         loc = _arg()
         return _stamp(cmd_blimp(_expand_location(loc) if loc else None))
-    if lower in ("!tfr", "!tfrs", "!temp"):
+    if _hit("tfr", "tfr", "tfrs", "temp"):
         return _stamp(cmd_tfr())
-    if lower in ("!otd", "!onthisday", "!today"):
+    if _hit("otd", "otd", "onthisday", "today"):
         return _stamp(cmd_otd())
-    if lower == "!who" or lower.startswith("!who "):
+    if _hit("who", "who", starts=True):
         result = cmd_who(_arg(""))
         if isinstance(result, str):
             return _reply(result)
@@ -3474,35 +3722,35 @@ def bot(**kwargs) -> str | list[str] | None:
         if sender_name and not is_dm and filtered:
             filtered = [f"@[{sender_name}] {filtered[0]}"] + filtered[1:]
         return _safe(filtered)
-    if lower == "!zip" or lower.startswith("!zip "):
+    if _hit("zip", "zip", starts=True):
         return _stamp(cmd_zip(_arg("")))
-    if lower == "!set" or lower.startswith("!set "):
+    if _hit("set", "set", starts=True):
         return _stamp(cmd_set(_arg("")))
-    if lower == "!get" or lower.startswith("!get "):
+    if _hit("get", "get", starts=True):
         return _stamp(cmd_get(_arg("")))
-    if lower == "!del" or lower.startswith("!del "):
+    if _hit("del", "del", starts=True):
         return _stamp(cmd_del(_arg("")))
-    if lower == "!advert":
+    if _hit("advert", "advert"):
         return _reply(cmd_advert())
-    if lower in ("!power", "!outage", "!outages"):
+    if _hit("power", "power", "outage", "outages"):
         return _stamp(cmd_power())
-    if lower == "!stats":
+    if _hit("stats", "stats"):
         return _stamp(cmd_stats())
-    if lower == "!score" or lower.startswith("!score "):
+    if _hit("score", "score", starts=True):
         return _reply(cmd_score(_arg("")))
-    if lower in ("!leaderboard", "!lb"):
+    if _hit("leaderboard", "leaderboard", "lb"):
         return _stamp(cmd_leaderboard())
-    if lower == "!chess" or lower.startswith("!chess "):
+    if _hit("chess", "chess", starts=True):
         return _chess_out(cmd_chess(_arg(), sender_name=sender_name))
-    if lower.startswith("!move "):
+    if _hit("chess", "move", starts=True):
         return _chess_out(cmd_chess_move(_arg(), sender_name=sender_name))
-    if lower == "!board":
+    if _hit("board", "board"):
         return _chess_out(cmd_chess_board())
-    if lower == "!resign":
+    if _hit("resign", "resign"):
         return _stamp(cmd_chess_resign())
-    if lower == "!elo" or lower.startswith("!elo "):
+    if _hit("elo", "elo", starts=True):
         return _stamp(cmd_chess_elo(_arg()))
-    if lower == "!bot":
+    if _hit("bot", "bot"):
         import random
         return random.choice(["Yeah?", "What?"])
 
