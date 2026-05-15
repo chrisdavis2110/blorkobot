@@ -22,7 +22,7 @@ import xml.etree.ElementTree as ET
 
 # Remote Terminal for MeshCore HTTP API base URL. The fanout plugin calls
 # back into RT to read messages, look up contacts, send DMs, etc.
-_API = "http://127.0.0.1:8000"
+_API = "http://127.0.0.1:8080"
 
 # Persistent state and on-disk caches. Most live under data/ alongside this
 # file; tide-station list is large and rarely changes, so we park it in /tmp.
