@@ -1,4 +1,14 @@
-"""BlorkoBot — multi-command mesh radio bot."""
+"""BlorkoBot — multi-command mesh radio bot.
+
+File map (search for these headers):
+  Configuration
+  Command registry
+  Command matching
+  Utilities
+  Commands — Info & path | Weather | Fun | Memory & trivia
+  Chess | Earth & environment | AI | Sports & local | Aviation
+  Message formatting | Fanout entry point
+"""
 
 import html as html_mod
 import json
@@ -57,6 +67,10 @@ _CENTER = (34.051080, -118.254353)       # lat/lon for default-radius aviation l
 # patterns to enable.
 _FILTERED_WORDS = re.compile(r"(?!)", re.IGNORECASE)
 
+# ---------------------------------------------------------------------------
+# Command registry — prefix, enable/disable, channels, aliases
+# ---------------------------------------------------------------------------
+
 # Command prefix for channel commands (e.g. "!"). Empty = no prefix required.
 # Legacy "!cmd" is still accepted when this is empty.
 _COMMAND_PREFIX = ""
@@ -99,7 +113,7 @@ _COMMANDS = {
     "stats": True,
     "who": True,
     # Weather & environment
-    "weather": False,
+    "weather": True,
     "weatherc": False,
     "forecast": False,
     "forecastc": False,
@@ -116,7 +130,7 @@ _COMMANDS = {
     "fire": False,
     "space": False,
     "swx": False,
-    "hf": False,
+    "hf": True,
     "flare": False,
     "neo": False,
     "iss": False,
@@ -169,13 +183,11 @@ _COMMANDS = {
 # not need to repeat them in each if _hit(...) line). Topic channels accept any
 # alias whose canonical id matches a trigger listed in _TOPIC_CHANNELS.
 _COMMAND_ALIASES = {
-    "p": "path",
-    "t": "path",
+    "p": "pathx",
+    "t": "test",
     "patha": "pathall",
     "longpath": "pathx",
-    "bigpath": "pathx",
-    "path2byte": "path",
-    "path3byte": "path",
+    "prefix": "who",
     "w": "weather",
     "wc": "weatherc",
     "fc": "forecast",
@@ -210,14 +222,12 @@ _COMMAND_ALIASES = {
     "cat": "catfact",
     "nasa": "apod",
     "drink": "cocktail",
-    "outage": "power",
-    "outages": "power",
     "lb": "leaderboard",
-    "move": "chess",
-    "board": "chess",
-    "resign": "chess",
-    "elo": "chess",
 }
+
+# ---------------------------------------------------------------------------
+# Command matching — prefix strip, triggers, enable/channel gates
+# ---------------------------------------------------------------------------
 
 
 def _p(cmd: str) -> str:
@@ -308,6 +318,10 @@ def _cmd_hit(
     if starts:
         return _cmd_match(bare, *triggers) or _cmd_starts(bare, *triggers)
     return _cmd_match(bare, *triggers)
+
+# ---------------------------------------------------------------------------
+# Utilities — HTTP, pathx cache, path disambiguation
+# ---------------------------------------------------------------------------
 
 
 def _fetch(url, timeout=8, headers=None):
@@ -521,54 +535,50 @@ def _resolve_path_hops(hops, sender_key, sender_gps, cache):
 
 
 # ---------------------------------------------------------------------------
-# Commands — all return plain strings (no tag/emoji, _stamp handles that)
+# Commands — handlers (plain strings; _stamp formats for the mesh)
 # ---------------------------------------------------------------------------
+
+# --- Info & path -----------------------------------------------------------
 
 def cmd_channels():
     return [
-        "#bot #test #alert #fire #earthquake",
-        "#weather #sf #chat #bookclub #queer #path #garden #yo #event",
+        "#test #socalalert #emergency",
     ]
 
 
 def cmd_help():
     return (
-        f"{_p('docs')} {_p('channels')} {_p('path')} {_p('2byte')} {_p('dm')} {_p('about')} "
-        f"{_p('weather')} {_p('wc')} {_p('forecast')} {_p('fcc')} {_p('sun')} {_p('moon')} "
-        f"{_p('tide')} {_p('alerts')} {_p('score')} {_p('power')} ({_p('help2')})"
+        f"{_p('docs')} {_p('channels')} {_p('path')} {_p('about')} "
+        f"{_p('weather')} {_p('sun')} {_p('moon')} "
+        f"{_p('tide')} ({_p('help2')})"
     )
 
 
 def cmd_help2():
     return (
-        f"{_p('ai')} {_p('sonnet')} {_p('haiku')} {_p('stock')} {_p('trivia')} {_p('iss')} "
-        f"{_p('space')} {_p('swx')} {_p('flare')} {_p('neo')} {_p('quake')} {_p('fire')} "
-        f"{_p('hf')} {_p('pollen')} {_p('convert')} {_p('8ball')} {_p('crypto')} ({_p('help3')})"
+        f"{_p('trivia')} {_p('iss')} "
+        f""
+        f"{_p('hf')} {_p('convert')} {_p('8ball')} ({_p('help3')})"
     )
 
 
 def cmd_help3():
     return (
-        f"{_p('define')} {_p('wiki')} {_p('dadjoke')} {_p('time')} {_p('aqi')} {_p('fact')} "
-        f"{_p('joke')} {_p('quote')} {_p('advice')} {_p('catfact')} ({_p('help4')})"
+        f"{_p('wiki')} {_p('fact')} "
+        f"{_p('joke')} {_p('quote')} {_p('advice')} ({_p('help4')})"
     )
 
 
 def cmd_help4():
     return (
-        f"{_p('riddle')} {_p('country')} {_p('apod')} {_p('cocktail')} {_p('futurama')} "
-        f"{_p('simpsons')} {_p('river')} {_p('wave')} {_p('otd')} {_p('zip')} {_p('who')} "
-        f"{_p('pathx')} {_p('set')} {_p('get')} {_p('del')} {_p('advert')} {_p('stats')} "
-        f"{_p('leaderboard')} {_p('chess')} ({_p('help5')})"
+        f"{_p('riddle')} "
+        f"{_p('who')} "
+        f"{_p('pathx')} {_p('advert')} {_p('stats')} "
     )
 
 
-def cmd_help5():
-    return f"{_p('flight')} {_p('delays')} {_p('sky')} {_p('mil')} {_p('blimp')} {_p('tfr')}"
-
-
 def cmd_docs():
-    return "\U0001f4d2 Full docs: https://gist.github.com/statico-alt/a0b3e7b11ee66c4cc5ca97444924ea80"
+    return "\U0001f4d2 Full docs: https://github.com/chrisdavis2110/blorkobot"
 
 
 def _get_contact_path(sender_key):
@@ -590,6 +600,16 @@ def _get_contact_path(sender_key):
     except Exception:
         pass
     return None, None
+
+
+def cmd_test(path, path_bytes_per_hop, transit_ms=None):
+    suffix = f" - {transit_ms / 1000:.1f}s" if transit_ms is not None else ""
+    if not path:
+        return f"direct{suffix}"
+    chars_per_hop = (path_bytes_per_hop or 1) * 2
+    hops = [path[i:i + chars_per_hop].upper() for i in range(0, len(path), chars_per_hop)]
+    label = "hop" if len(hops) == 1 else "hops"
+    return f"{len(hops)} {label} - {chr(0x2192).join(hops)}{suffix}"
 
 
 def cmd_path(path, path_bytes_per_hop, transit_ms=None):
@@ -826,6 +846,8 @@ def cmd_dm(sender_key, sender_name, path, path_bytes_per_hop):
 def cmd_about():
     return f"\U0001f44b BlorkoBot by Blorko - unofficial bot for Bay Area MeshCore. I respond in #bot #test and DMs. Try {_p('docs')}"
 
+
+# --- Weather & environment -----------------------------------------------
 
 _WEATHER_EMOJI_MAP = {
     "sunny": "\u2600\ufe0f", "clear": "\u2600\ufe0f",
@@ -1077,6 +1099,8 @@ def cmd_alerts(state):
         return f"{len(features)} alert(s) for {state} (no headlines)"
     return f"{len(features)} alert(s) for {state}: {' | '.join(headlines)}"
 
+
+# --- Fun, reference & utilities --------------------------------------------
 
 _CONVERSIONS = {
     ("mi", "km"): 1.60934, ("km", "mi"): 0.621371,
@@ -1352,41 +1376,7 @@ def cmd_cocktail():
         return "couldn't fetch a cocktail"
 
 
-def cmd_futurama():
-    try:
-        data = _fetch_json("https://morbotron.com/api/random")
-        subs = data.get("Subtitles", [])
-        if not subs:
-            return "no quote available"
-        text = " ".join(s.get("Content", "") for s in subs).strip()
-        if not text:
-            return "no quote available"
-        if text.isupper():
-            text = text.lower()
-        if len(text) > 150:
-            text = text[:147] + "..."
-        return f"\U0001f680 {text}"
-    except Exception:
-        return "couldn't fetch a Futurama quote"
-
-
-def cmd_simpsons():
-    try:
-        data = _fetch_json("https://frinkiac.com/api/random")
-        subs = data.get("Subtitles", [])
-        if not subs:
-            return "no quote available"
-        text = " ".join(s.get("Content", "") for s in subs).strip()
-        if not text:
-            return "no quote available"
-        if text.isupper():
-            text = text.lower()
-        if len(text) > 150:
-            text = text[:147] + "..."
-        return f"\U0001f7e1 {text}"
-    except Exception:
-        return "couldn't fetch a Simpsons quote"
-
+# --- Memory & trivia -----------------------------------------------------
 
 def _load_memory():
     if not os.path.exists(_MEMORY_FILE):
@@ -1402,46 +1392,6 @@ def _save_memory(data):
     os.makedirs(os.path.dirname(_MEMORY_FILE), exist_ok=True)
     with open(_MEMORY_FILE, "w") as f:
         json.dump(data, f)
-
-
-def cmd_set(args):
-    parts = args.strip().split(None, 1)
-    if len(parts) < 2:
-        return f"usage: {_p('set')} <key> <value>"
-    key, value = parts[0].lower(), parts[1]
-    if len(key) > 32:
-        return "key too long (32 char max)"
-    if len(value) > 200:
-        return "value too long (200 char max)"
-    mem = _load_memory()
-    if key not in mem and len(mem) >= _MEMORY_MAX_KEYS:
-        return f"memory full ({_MEMORY_MAX_KEYS} keys max)"
-    mem[key] = value
-    _save_memory(mem)
-    return f"\U0001f4be {key} = {value}"
-
-
-def cmd_get(key):
-    key = key.strip().lower()
-    if not key:
-        return f"usage: {_p('get')} <key>"
-    mem = _load_memory()
-    value = mem.get(key)
-    if value is None:
-        return f"no value for '{key}'"
-    return f"\U0001f4cb {key} = {value}"
-
-
-def cmd_del(key):
-    key = key.strip().lower()
-    if not key:
-        return f"usage: {_p('del')} <key>"
-    mem = _load_memory()
-    if key not in mem:
-        return f"no value for '{key}'"
-    del mem[key]
-    _save_memory(mem)
-    return f"\U0001f5d1 deleted '{key}'"
 
 
 def _load_trivia_state():
@@ -1566,7 +1516,7 @@ def cmd_leaderboard():
 
 
 # ---------------------------------------------------------------------------
-# Chess — one global game, everyone plays white vs the bot
+# Chess
 # ---------------------------------------------------------------------------
 
 _INITIAL_BOARD = [
@@ -1852,6 +1802,10 @@ def cmd_chess_elo(arg=None):
     return f"\u265a Default ELO 1000. {_p('elo')} <800-2400> to change"
 
 
+# ---------------------------------------------------------------------------
+# Earth & environment — space, quakes, fire, air/water quality
+# ---------------------------------------------------------------------------
+
 def cmd_space():
     """Space weather from NOAA SWPC — Kp index, solar wind, SFI."""
     try:
@@ -2008,83 +1962,6 @@ def cmd_fire():
         return f"{header}: {' | '.join(parts)}"
     except Exception:
         return "couldn't fetch fire data"
-
-
-_BAY511_COUNTY_ABBR = {
-    "Napa": "NAP", "San Francisco": "SF", "San Mateo": "SM",
-    "Santa Clara": "SC", "Solano": "SOL", "Sonoma": "SON",
-}
-
-
-def cmd_511(route):
-    """Bay Area 511 active traffic incidents. No arg = recent incidents region-wide."""
-    _log = logging.getLogger("megabot.511")
-    num = None
-    if route:
-        m = re.match(r'^\s*(?:i-|us-|ca-|sr-|hwy\s*)?(\d+)\s*$', route, re.I)
-        if not m:
-            return f"unknown route: {route}"
-        num = m.group(1)
-    try:
-        url = f"https://api.511.org/traffic/events?api_key={_BAY511_API_KEY}&format=json"
-        req = urllib.request.Request(url, headers={
-            "User-Agent": "meshcore-megabot",
-            "Accept-Encoding": "gzip",
-        })
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            raw = resp.read()
-            if resp.headers.get("Content-Encoding") == "gzip":
-                import gzip
-                raw = gzip.decompress(raw)
-        data = json.loads(raw.decode("utf-8-sig"))
-        evs = data.get("events", []) or []
-
-        emoji_for = {"INCIDENT": "⚠️", "CONSTRUCTION": "🚧"}
-        # No-arg mode: incidents only, region-wide. With route: incidents + construction.
-        allowed_types = {"INCIDENT"} if num is None else set(emoji_for.keys())
-        matches = []
-        for e in evs:
-            if e.get("status") != "ACTIVE":
-                continue
-            etype = e.get("event_type")
-            if etype not in allowed_types:
-                continue
-            roads = e.get("roads") or []
-            if not roads:
-                continue
-            r = roads[0]
-            if num is not None:
-                name = r.get("name") or ""
-                rm = re.match(r'^(?:I|US|CA|SR)-(\d+)\b', name, re.I)
-                if not rm or rm.group(1) != num:
-                    continue
-            matches.append((e, r))
-
-        if not matches:
-            return f"no active events on {num}" if num else "no active Bay Area incidents"
-
-        matches.sort(key=lambda x: x[0].get("updated", ""), reverse=True)
-
-        header = f"{len(matches)} event(s) on {num}" if num else f"{len(matches)} Bay incident(s)"
-        lines = [header]
-        for i, (e, r) in enumerate(matches[:5], 1):
-            area = ((e.get("areas") or [{}])[0]).get("name", "?")
-            cty = _BAY511_COUNTY_ABBR.get(area, area[:3].upper())
-            road = r.get("name") or "?"
-            frm = r.get("from") or "unk"
-            to = r.get("to") or "unk"
-            updated = e.get("updated") or ""
-            try:
-                t = datetime.strptime(updated, "%Y-%m-%dT%H:%MZ").replace(tzinfo=timezone.utc)
-                hhmm = t.astimezone(_PT).strftime("%H:%M")
-            except Exception:
-                hhmm = ""
-            emoji = emoji_for[e.get("event_type")]
-            lines.append(f"({i}) {emoji} {cty} ({road}) {frm} → {to} {hhmm}")
-        return " ".join(lines)
-    except Exception as exc:
-        _log.error("511 fetch failed: %s\n%s", exc, traceback.format_exc())
-        return "couldn't fetch 511 data"
 
 
 def cmd_quake(args=None):
@@ -2746,13 +2623,12 @@ def cmd_haiku(subject):
 
 
 # ---------------------------------------------------------------------------
-# Dispatcher
+# Sports & local — scores, power, location aliases
 # ---------------------------------------------------------------------------
 
 _LOCATION_ALIASES = {
-    "sf": "San Francisco",
-    "sj": "San Jose",
-    "sfo": "San Francisco International Airport",
+    "la": "Los Angeles",
+    "lax": "Los Angeles International Airport",
 }
 
 _BAY_AREA_TEAMS = {
@@ -3368,7 +3244,7 @@ def cmd_tfr():
         return "TFR lookup failed"
     bay = [t for t in data if _tfr_is_bay_area(t)]
     if not bay:
-        return "no Bay Area TFRs active"
+        return "no TFRs active"
     out = []
     for t in bay[:3]:
         nid = t.get("notam_id") or "?"
@@ -3387,6 +3263,10 @@ def _expand_location(loc):
         return _LOCATION_ALIASES[loc.strip().lower()]
     return loc
 
+
+# ---------------------------------------------------------------------------
+# Message formatting — filter, split, stamp for mesh limits
+# ---------------------------------------------------------------------------
 
 def _clean(text, preserve_newlines=False):
     """Collapse whitespace runs and strip leading/trailing whitespace."""
@@ -3475,6 +3355,10 @@ def _stamp(result, preserve_newlines=False):
         return out[0]
     return out
 
+
+# ---------------------------------------------------------------------------
+# Fanout entry point — bot() message router
+# ---------------------------------------------------------------------------
 
 def bot(**kwargs) -> str | list[str] | None:
     message_text = kwargs.get("message_text", "")
