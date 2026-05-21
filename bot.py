@@ -10,6 +10,7 @@ File map (search for these headers):
   Message formatting | Fanout entry point
 """
 
+import base64
 import html as html_mod
 import json
 import logging
@@ -33,6 +34,12 @@ import xml.etree.ElementTree as ET
 # Remote Terminal for MeshCore HTTP API base URL. The fanout plugin calls
 # back into RT to read messages, look up contacts, send DMs, etc.
 _API = "http://127.0.0.1:8080"
+
+# HTTP Basic auth for _API (if your Remote Terminal requires it). Leave blank
+# to use MESHCORE_BASIC_AUTH_USERNAME / MESHCORE_BASIC_AUTH_PASSWORD from the
+# RT process environment (recommended when the bot runs inside RT).
+_API_USER = ""
+_API_PASS = ""
 
 # Persistent state and on-disk caches. Most live under data/ alongside this
 # file; tide-station list is large and rarely changes, so we park it in /tmp.
@@ -189,6 +196,7 @@ _COMMAND_ALIASES = {
     "longpath": "pathx",
     "prefix": "who",
     "w": "weather",
+    "wx": "weather",
     "wc": "weatherc",
     "fc": "forecast",
     "fcc": "forecastc",
@@ -324,10 +332,21 @@ def _cmd_hit(
 # ---------------------------------------------------------------------------
 
 
+def _api_headers(extra=None):
+    """Headers for Remote Terminal API requests, including optional Basic auth."""
+    hdrs = {"User-Agent": "BlorkoBot"}
+    if extra:
+        hdrs.update(extra)
+    user = _API_USER or os.environ.get("MESHCORE_BASIC_AUTH_USERNAME", "")
+    passwd = _API_PASS or os.environ.get("MESHCORE_BASIC_AUTH_PASSWORD", "")
+    if user and passwd:
+        token = base64.b64encode(f"{user}:{passwd}".encode()).decode("ascii")
+        hdrs["Authorization"] = f"Basic {token}"
+    return hdrs
+
+
 def _fetch(url, timeout=8, headers=None):
-    hdrs = {"User-Agent": "meshcore-megabot"}
-    if headers:
-        hdrs.update(headers)
+    hdrs = _api_headers(headers)
     req = urllib.request.Request(url, headers=hdrs)
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return resp.read().decode("utf-8").strip()
@@ -802,7 +821,7 @@ def _send_dm(public_key, name, text):
     req = urllib.request.Request(
         f"{_API}/api/contacts",
         data=body,
-        headers={"Content-Type": "application/json"},
+        headers=_api_headers({"Content-Type": "application/json"}),
         method="POST",
     )
     urllib.request.urlopen(req, timeout=5)
@@ -811,7 +830,7 @@ def _send_dm(public_key, name, text):
     req = urllib.request.Request(
         f"{_API}/api/messages/direct",
         data=body,
-        headers={"Content-Type": "application/json"},
+        headers=_api_headers({"Content-Type": "application/json"}),
         method="POST",
     )
     urllib.request.urlopen(req, timeout=5)
@@ -2403,7 +2422,7 @@ def cmd_advert():
         req = urllib.request.Request(
             f"{_API}/api/radio/advertise",
             data=json.dumps({"mode": "flood"}).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
+            headers=_api_headers({"Content-Type": "application/json"}),
             method="POST",
         )
         urllib.request.urlopen(req, timeout=5)

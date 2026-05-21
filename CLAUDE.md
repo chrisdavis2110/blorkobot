@@ -6,7 +6,7 @@ We use [Remote Terminal for MeshCore](https://github.com/nicholasgasior/Remote-T
 
 `bot.py` is a Python "fanout" plugin for Remote Terminal — it responds to user messages. `server.ts` is a long-running Node.js server that polls external services (USGS, NWS, etc.) and pushes alerts to MeshCore channels via the same API.
 
-If Remote Terminal has HTTP Basic auth enabled (`MESHCORE_BASIC_AUTH_USERNAME` / `MESHCORE_BASIC_AUTH_PASSWORD`), pass credentials on every `curl` with `-u "$RT_USER:$RT_PASS"` (or `curl -u 'user:pass'`).
+If Remote Terminal has HTTP Basic auth enabled (`MESHCORE_BASIC_AUTH_USERNAME` / `MESHCORE_BASIC_AUTH_PASSWORD`), pass credentials on every `curl` with `-u "$RT_USER:$RT_PASS"` (or `curl -u 'user:pass'`). The bot reads the same credentials automatically from those env vars when running inside RT, or set `_API_USER` / `_API_PASS` at the top of `bot.py`.
 
 ## Create the fanout (first time)
 
