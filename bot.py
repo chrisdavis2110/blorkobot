@@ -193,6 +193,7 @@ _COMMAND_ALIASES = {
     "p": "pathx",
     "t": "test",
     "patha": "pathall",
+    "mt": "pathall",
     "longpath": "pathx",
     "prefix": "who",
     "w": "weather",
@@ -2451,7 +2452,7 @@ def cmd_who(prefix):
     matches.sort(key=lambda c: c.get("name") or "")
     now_ts = datetime.now(timezone.utc).timestamp()
     lines = []
-    for c in matches[:5]:
+    for c in matches:
         name = c.get("name") or "?"
         pk = c["public_key"][:8].upper()
         lat = c.get("lat") or 0.0
@@ -2474,21 +2475,34 @@ def cmd_who(prefix):
             else:
                 ago_s = f"{ago}s"
         lines.append(f"{pk} {name} {loc} {ago_s}")
-    if len(matches) > 5:
-        lines.append(f"(+{len(matches) - 5} more)")
-    msgs = []
-    current = ""
-    for line in lines:
-        candidate = f"{current}\n{line}" if current else line
-        if len(candidate.encode("utf-8")) <= _MESH_MAX_BYTES:
-            current = candidate
-        else:
-            if current:
-                msgs.append(current)
-            current = line
-    if current:
-        msgs.append(current)
-    return msgs
+
+    n = len(matches)
+    header = f"{n} rptr{'s' if n != 1 else ''}:"
+
+    def _pack(header_line, body_lines):
+        out = []
+        current = header_line
+        for line in body_lines:
+            candidate = f"{current}\n{line}" if current else line
+            if len(candidate.encode("utf-8")) <= _MESH_MAX_BYTES:
+                current = candidate
+            else:
+                if current:
+                    out.append(current)
+                current = line
+        if current:
+            out.append(current)
+        return out
+
+    msgs = _pack(header, lines)
+    if len(msgs) <= _MAX_MESSAGES:
+        return msgs
+    for keep in range(len(lines), 0, -1):
+        tail = [f"(+{n - keep} more)"] if keep < n else []
+        attempt = _pack(header, lines[:keep] + tail)
+        if len(attempt) <= _MAX_MESSAGES:
+            return attempt
+    return msgs[:_MAX_MESSAGES]
 
 
 def cmd_zip(code):
