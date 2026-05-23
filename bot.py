@@ -113,6 +113,8 @@ _COMMANDS = {
     "help3": False,
     "help4": False,
     "help5": False,
+    "ping": True,
+    "test": True,
     "path": True,
     "pathall": True,
     "pathx": True,
@@ -190,7 +192,7 @@ _COMMANDS = {
 # not need to repeat them in each if _hit(...) line). Topic channels accept any
 # alias whose canonical id matches a trigger listed in _TOPIC_CHANNELS.
 _COMMAND_ALIASES = {
-    "p": "pathx",
+    "p": "path",
     "t": "test",
     "patha": "pathall",
     "mt": "pathall",
@@ -622,38 +624,22 @@ def _get_contact_path(sender_key):
     return None, None
 
 
-def cmd_test(path, path_bytes_per_hop, transit_ms=None):
-    suffix = f" - {transit_ms / 1000:.1f}s" if transit_ms is not None else ""
-    if not path:
-        return f"direct{suffix}"
-    chars_per_hop = (path_bytes_per_hop or 1) * 2
-    hops = [path[i:i + chars_per_hop].upper() for i in range(0, len(path), chars_per_hop)]
-    label = "hop" if len(hops) == 1 else "hops"
-    return f"{len(hops)} {label} - {chr(0x2192).join(hops)}{suffix}"
+def _path_transit_suffix(transit_ms):
+    return f" - {transit_ms / 1000:.1f}s" if transit_ms is not None else ""
 
 
-def cmd_path(path, path_bytes_per_hop, transit_ms=None):
-    suffix = f" - {transit_ms / 1000:.1f}s" if transit_ms is not None else ""
-    if not path:
-        return f"direct{suffix}"
-    chars_per_hop = (path_bytes_per_hop or 1) * 2
-    hops = [path[i:i + chars_per_hop].upper() for i in range(0, len(path), chars_per_hop)]
-    label = "hop" if len(hops) == 1 else "hops"
-    return f"{len(hops)} {label} - {chr(0x2192).join(hops)}{suffix}"
-
-
-def cmd_pathx(path, path_bytes_per_hop, sender_key):
-    """Extended path info: walk each hop, look up the repeater by prefix."""
-    p, bph = path, path_bytes_per_hop
-    if not p and sender_key:
-        p, bph = _get_contact_path(sender_key)
-    if not p:
-        return "direct"
-    bph = bph or 1
+def _path_split_hops(path, path_bytes_per_hop):
+    bph = path_bytes_per_hop or 1
     chars_per_hop = bph * 2
-    hex_path = p.lower()
-    hops = [hex_path[i:i + chars_per_hop] for i in range(0, len(hex_path), chars_per_hop)]
+    hex_path = path.lower()
+    return [hex_path[i:i + chars_per_hop] for i in range(0, len(hex_path), chars_per_hop)]
 
+
+def _path_resolve(path, path_bytes_per_hop, sender_key):
+    """Resolve path hops to [(prefix, name, lat, lon, ambiguous), ...]."""
+    if not path:
+        return None
+    hops = _path_split_hops(path, path_bytes_per_hop)
     cache = _load_pathx_cache()
     contacts = None
     sender_gps = None
@@ -670,10 +656,8 @@ def cmd_pathx(path, path_bytes_per_hop, sender_key):
                     sender_gps = (lat, lon)
                 break
     if not cache:
-        # Best-effort fallback: synthesize a minimal cache from contacts so the
-        # resolver still works at layer 3 (GPS) — layers 1/2 stay empty.
         if not contacts:
-            return "couldn't fetch contacts"
+            return "error"
         synth = {}
         for c in contacts:
             if c.get("type") != 2:
@@ -707,43 +691,90 @@ def cmd_pathx(path, path_bytes_per_hop, sender_key):
                 cand.get("lon") or 0.0,
                 ambig,
             ))
+    return resolved
 
-    def render_lines(with_loc):
-        lines = []
-        for prefix, name, lat, lon, ambig in resolved:
-            suffix = " ?" if ambig else ""
-            if name is None:
-                lines.append(f"{prefix}: ?{suffix}")
-            elif with_loc and not (lat == 0.0 and lon == 0.0):
-                lines.append(f"{prefix}: {name} {lat:.2f},{lon:.2f}{suffix}")
-            else:
-                lines.append(f"{prefix}: {name}{suffix}")
-        return lines
 
-    def pack(lines, header):
-        msgs = []
-        current = header
-        for line in lines:
-            candidate = f"{current}\n{line}" if current else line
-            if len(candidate.encode("utf-8")) <= _MESH_MAX_BYTES:
-                current = candidate
-            else:
-                if current:
-                    msgs.append(current)
-                current = line
-        if current:
-            msgs.append(current)
+def _path_render_lines(resolved, with_loc=False):
+    lines = []
+    for prefix, name, lat, lon, ambig in resolved:
+        mark = " ?" if ambig else ""
+        if name is None:
+            lines.append(f"{prefix}: ?{mark}")
+        elif with_loc and not (lat == 0.0 and lon == 0.0):
+            lines.append(f"{prefix}: {name} {lat:.2f},{lon:.2f}{mark}")
+        else:
+            lines.append(f"{prefix}: {name}{mark}")
+    return lines
+
+
+def _path_pack_lines(lines, header=None):
+    msgs = []
+    current = header or ""
+    for line in lines:
+        candidate = f"{current}\n{line}" if current else line
+        if len(candidate.encode("utf-8")) <= _MESH_MAX_BYTES:
+            current = candidate
+        else:
+            if current:
+                msgs.append(current)
+            current = line
+    if current:
+        msgs.append(current)
+    return msgs
+
+
+def cmd_test(path, path_bytes_per_hop, transit_ms=None):
+    """Hop count and raw path prefixes (e.g. 3 hops - A1→B2→C3)."""
+    suffix = _path_transit_suffix(transit_ms)
+    if not path:
+        return f"direct{suffix}"
+    hops = [h.upper() for h in _path_split_hops(path, path_bytes_per_hop)]
+    label = "hop" if len(hops) == 1 else "hops"
+    return f"{len(hops)} {label} - {",".join(hops)}{suffix}"
+
+
+def cmd_path(path, path_bytes_per_hop, sender_key=None, transit_ms=None):
+    """Repeater name per hop (e.g. D594: KM REPEATER)."""
+    p, bph = path, path_bytes_per_hop
+    if not p and sender_key:
+        p, bph = _get_contact_path(sender_key)
+    if not p:
+        return f"direct{_path_transit_suffix(transit_ms)}"
+    resolved = _path_resolve(p, bph, sender_key)
+    if resolved == "error":
+        return "couldn't fetch contacts"
+    lines = _path_render_lines(resolved, with_loc=False)
+    msgs = _path_pack_lines(lines)
+    if len(msgs) <= _MAX_MESSAGES:
         return msgs
+    for keep in range(len(lines), 0, -1):
+        tail = [f"(+{len(lines) - keep} more)"] if keep < len(lines) else []
+        attempt = _path_pack_lines(lines[:keep] + tail)
+        if len(attempt) <= _MAX_MESSAGES:
+            return attempt
+    return msgs[:_MAX_MESSAGES]
 
-    n = len(hops)
+
+def cmd_pathx(path, path_bytes_per_hop, sender_key):
+    """Extended path info: names + lat/lon per hop."""
+    p, bph = path, path_bytes_per_hop
+    if not p and sender_key:
+        p, bph = _get_contact_path(sender_key)
+    if not p:
+        return "direct"
+    resolved = _path_resolve(p, bph, sender_key)
+    if resolved == "error":
+        return "couldn't fetch contacts"
+    n = len(resolved)
     header = f"{n} {'hop' if n == 1 else 'hops'}:"
-    msgs = pack(render_lines(True), header)
+    msgs = _path_pack_lines(_path_render_lines(resolved, with_loc=True), header)
     if len(msgs) > _MAX_MESSAGES:
-        msgs = pack(render_lines(False), header)
+        msgs = _path_pack_lines(_path_render_lines(resolved, with_loc=False), header)
     if len(msgs) > _MAX_MESSAGES:
-        base = render_lines(False)
+        base = _path_render_lines(resolved, with_loc=False)
         for keep in range(len(base) - 1, 0, -1):
-            attempt = pack(base[:keep] + [f"(+{len(base) - keep} more)"], header)
+            attempt = _path_pack_lines(
+                base[:keep] + [f"(+{len(base) - keep} more)"], header)
             if len(attempt) <= _MAX_MESSAGES:
                 msgs = attempt
                 break
@@ -793,26 +824,38 @@ def cmd_pathall(channel_key, sender_key, sender_name, sender_timestamp, message_
         return "Heard 1× direct"
 
     paths_sorted = sorted(paths, key=lambda p: p.get("received_at") or 0)
-    parts = []
+    lines = []
+    seen = set()
     for p in paths_sorted:
         hex_path = (p.get("path") or "").lower()
         path_len = p.get("path_len")
         if not hex_path:
-            parts.append("direct")
-            continue
-        if path_len and path_len > 0:
-            chars_per_hop = max(2, len(hex_path) // path_len)
+            line = "direct"
         else:
-            chars_per_hop = 2
-        hops = [hex_path[i:i + chars_per_hop].upper() for i in range(0, len(hex_path), chars_per_hop)]
-        parts.append(chr(0x2192).join(hops))
+            if path_len and path_len > 0:
+                chars_per_hop = max(2, len(hex_path) // path_len)
+            else:
+                chars_per_hop = 2
+            hops = [hex_path[i:i + chars_per_hop] for i in range(0, len(hex_path), chars_per_hop)]
+            line = ",".join(hops)
+        if line not in seen:
+            seen.add(line)
+            lines.append(line)
 
-    n = len(paths_sorted)
-    header = f"Heard {n}× | "
-    while parts and len(header + " | ".join(parts)) > 380:
-        parts.pop()
-    suffix = f" | +{n - len(parts)} more" if len(parts) < n else ""
-    return header + " | ".join(parts) + suffix
+    n = len(lines)
+    if n == 0:
+        return "direct"
+    label = "path" if n == 1 else "paths"
+    header = f"found {n} unique {label}:"
+    msgs = _path_pack_lines(lines, header)
+    if len(msgs) <= _MAX_MESSAGES:
+        return msgs
+    for keep in range(len(lines), 0, -1):
+        tail = [f"(+{len(lines) - keep} more)"] if keep < len(lines) else []
+        attempt = _path_pack_lines(lines[:keep] + tail, header)
+        if len(attempt) <= _MAX_MESSAGES:
+            return attempt
+    return msgs[:_MAX_MESSAGES]
 
 
 def _send_dm(public_key, name, text):
@@ -856,7 +899,7 @@ def cmd_dm(sender_key, sender_name, path, path_bytes_per_hop):
         p, bph = path, path_bytes_per_hop
         if not p and key:
             p, bph = _get_contact_path(key)
-        path_info = cmd_path(p, bph)
+        path_info = cmd_test(p, bph)
         _send_dm(key, sender_name, f"\U0001f4ac {path_info}")
         return "\U0001f4ec just sent you a DM! (you can reply to it)"
     except Exception:
@@ -3428,7 +3471,7 @@ def bot(**kwargs) -> str | list[str] | None:
         p, bph = path, path_bytes_per_hop
         if not p and sender_key:
             p, bph = _get_contact_path(sender_key)
-        path_info = cmd_path(p, bph, transit_ms)
+        path_info = cmd_test(p, bph, transit_ms)
         return _stamp(f'"{msg_tail}" - {path_info}')
 
     # Trivia answer detection (before command matching)
@@ -3470,10 +3513,32 @@ def bot(**kwargs) -> str | list[str] | None:
             return _safe([f"{mention}{m}" for m in stamped])
         return _safe(f"{mention}{stamped}")
 
-    if _hit("path", "path", "ping", "pathbot", "test"):
-        return _reply(cmd_path(path, path_bytes_per_hop, transit_ms))
+    if _hit("path", "path"):
+        result = cmd_path(path, path_bytes_per_hop, sender_key, transit_ms)
+        if isinstance(result, str):
+            return _reply(result)
+        filtered = _content_filter(result)
+        if not filtered:
+            return None
+        filtered = filtered[:_MAX_MESSAGES]
+        if sender_name and not is_dm and filtered:
+            filtered = [f"@[{sender_name}] {filtered[0]}"] + filtered[1:]
+        return _safe(filtered)
+    if _hit("ping", "ping"):
+        return _reply("pong")
+    if _hit("test", "test"):
+        return _reply(cmd_test(path, path_bytes_per_hop, transit_ms))
     if _hit("pathall", "pathall", "patha"):
-        return _reply(cmd_pathall(channel_key, sender_key, sender_name, sender_timestamp, message_text, is_dm))
+        result = cmd_pathall(channel_key, sender_key, sender_name, sender_timestamp, message_text, is_dm)
+        if isinstance(result, str):
+            return _reply(result)
+        filtered = _content_filter(result)
+        if not filtered:
+            return None
+        filtered = filtered[:_MAX_MESSAGES]
+        if sender_name and not is_dm and filtered:
+            filtered = [f"@[{sender_name}] {filtered[0]}"] + filtered[1:]
+        return _safe(filtered)
     if _hit("pathx", "pathx", "longpath", "bigpath"):
         result = cmd_pathx(path, path_bytes_per_hop, sender_key)
         if isinstance(result, str):
