@@ -2448,7 +2448,6 @@ def cmd_stats():
     """Mesh network statistics from Remote Terminal API."""
     try:
         data = _fetch_json(f"{_API}/api/statistics")
-        nodes = data["contact_count"]
         ch = data["channel_count"]
         msgs = data["total_channel_messages"]
         pkts = data["total_packets"]
@@ -2459,9 +2458,9 @@ def cmd_stats():
         if counts:
             companions, rptrs, rooms = counts
         else:
-            companions = nodes
+            companions = data["contact_count"]
             rptrs = data["repeater_count"]
-            rooms = data.get("room_server_count") or 0
+            rooms = 0
         lines = [
             f"\U0001f4ca {companions} companions {rptrs} repeaters {rooms} room servers",
         ]
