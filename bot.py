@@ -2429,7 +2429,7 @@ def _2byte_progress_bar(rptr_1b, rptr_2b, rptr_3b, width=13):
 def _count_contact_types():
     """Return (companions, repeaters, room_servers) from contacts by type."""
     try:
-        contacts = _fetch_json(f"{_API}/api/contacts")
+        contacts = _fetch_json(f"{_API}/api/contacts?limit=1000")
         companions = repeaters = rooms = 0
         for c in contacts:
             t = c.get("type")
