@@ -118,7 +118,7 @@ _COMMANDS = {
     "path": True,
     "pathall": True,
     "pathx": True,
-    "2byte": False,
+    "2byte": True,
     "stats": True,
     "who": True,
     # Weather & environment
@@ -168,21 +168,21 @@ _COMMANDS = {
     # Fun & reference
     "advice": False,
     "apod": False,
-    "catfact": True,
+    "catfact": False,
     "cocktail": True,
-    "country": True,
-    "crypto": True,
-    "dadjoke": True,
-    "define": True,
+    "country": False,
+    "crypto": False,
+    "dadjoke": False,
+    "define": False,
     "fact": True,
     "futurama": False,
     "joke": True,
     "leaderboard": False,
     "otd": False,
     "quote": True,
-    "riddle": True,
+    "riddle": False,
     "simpsons": False,
-    "stock": True,
+    "stock": False,
     "trivia": False,
     "wiki": False,
 }
@@ -198,6 +198,7 @@ _COMMAND_ALIASES = {
     "mt": "pathall",
     "longpath": "pathx",
     "prefix": "who",
+    "magic8": "8ball",
     "w": "weather",
     "wx": "weather",
     "wc": "weatherc",
@@ -564,30 +565,28 @@ def _resolve_path_hops(hops, sender_key, sender_gps, cache):
 
 def cmd_channels():
     return [
-        "#test #socalalert #emergency",
+        "#test #meshbud #socalalert #emergency #breakingnews",
     ]
 
 
 def cmd_help():
     return (
-        f"{_p('docs')} {_p('channels')} {_p('path')} {_p('about')} "
-        f"{_p('weather')} {_p('sun')} {_p('moon')} "
-        f"{_p('tide')} ({_p('help2')})"
+        f"{_p('test')} {_p('path')} {_p('channels')} {_p('weather')} {_p('hf')} {_p('prefix')} {_p('stats')} "
+        f"{_p('convert')} {_p('8ball')} {_p('joke')} {_p('fact')} {_p('quote')}"
     )
 
 
 def cmd_help2():
     return (
         f"{_p('trivia')} {_p('iss')} "
-        f""
-        f"{_p('hf')} {_p('convert')} {_p('8ball')} ({_p('help3')})"
+        f"{_p('hf')} {_p('convert')} {_p('8ball')}"
     )
 
 
 def cmd_help3():
     return (
         f"{_p('wiki')} {_p('fact')} "
-        f"{_p('joke')} {_p('quote')} {_p('advice')} ({_p('help4')})"
+        f"{_p('joke')} {_p('quote')} {_p('advice')}"
     )
 
 
@@ -625,7 +624,7 @@ def _get_contact_path(sender_key):
 
 
 def _path_transit_suffix(transit_ms):
-    return f" - {transit_ms / 1000:.1f}s" if transit_ms is not None else ""
+    return f"{transit_ms / 1000:.1f}s" if transit_ms is not None else ""
 
 
 def _path_split_hops(path, path_bytes_per_hop):
@@ -727,10 +726,10 @@ def cmd_test(path, path_bytes_per_hop, transit_ms=None):
     """Hop count and raw path prefixes (e.g. 3 hops - A1→B2→C3)."""
     suffix = _path_transit_suffix(transit_ms)
     if not path:
-        return f"direct{suffix}"
+        return f"direct | {suffix}"
     hops = [h.upper() for h in _path_split_hops(path, path_bytes_per_hop)]
     label = "hop" if len(hops) == 1 else "hops"
-    return f"{len(hops)} {label} - {",".join(hops)}{suffix}"
+    return f"{len(hops)} {label} | {",".join(hops)} | {suffix}"
 
 
 def cmd_path(path, path_bytes_per_hop, sender_key=None, transit_ms=None):
@@ -739,7 +738,7 @@ def cmd_path(path, path_bytes_per_hop, sender_key=None, transit_ms=None):
     if not p and sender_key:
         p, bph = _get_contact_path(sender_key)
     if not p:
-        return f"direct{_path_transit_suffix(transit_ms)}"
+        return "direct"
     resolved = _path_resolve(p, bph, sender_key)
     if resolved == "error":
         return "couldn't fetch contacts"
@@ -3525,7 +3524,9 @@ def bot(**kwargs) -> str | list[str] | None:
             filtered = [f"@[{sender_name}] {filtered[0]}"] + filtered[1:]
         return _safe(filtered)
     if _hit("ping", "ping"):
-        return _reply("pong")
+        return _reply("Pong!")
+    if _hit("pong", "pong"):
+        return _reply("Ping!")
     if _hit("test", "test"):
         return _reply(cmd_test(path, path_bytes_per_hop, transit_ms))
     if _hit("pathall", "pathall", "patha"):
@@ -3553,7 +3554,7 @@ def bot(**kwargs) -> str | list[str] | None:
     if _hit("path", "path2byte", "path3byte"):
         return _stamp(f"Multi-byte paths will be shown automatically with {_p('path')}")
     if _hit("2byte", "2byte"):
-        lines = ["https://bayareameshcore.org/blog/moving-to-2-byte-prefixes/"]
+        lines = ["https://wiki.wcmesh.com/multibyte"]
         bar = _2byte_progress_bar(*_count_repeater_types())
         if bar:
             lines.append(bar)
