@@ -2384,24 +2384,21 @@ def cmd_otd():
 
 
 def _count_repeater_types():
-    """Count repeaters by path hash width. Returns (1-byte, 2-byte, 3-byte)."""
+    """Count repeaters by advert path hash width via unique next_hop values."""
     rptr_1b = rptr_2b = rptr_3b = 0
+    seen = set()
     try:
-        adverts = _fetch_json(
-            f"{_API}/api/contacts/repeaters/advert-paths?limit_per_repeater=1"
-        )
+        adverts = _fetch_json(f"{_API}/api/contacts/repeaters/advert-paths")
         for entry in adverts:
-            paths = entry.get("paths") or []
-            if not paths:
-                continue
-            p = paths[0]
-            path_hex = p.get("path", "")
-            path_len = p.get("path_len", 0)
-            if path_len > 0 and path_hex:
-                bph = (len(path_hex) / 2) / path_len
-                if bph <= 1:
+            for p in entry.get("paths") or []:
+                next_hop = (p.get("next_hop") or "").lower()
+                if not next_hop or next_hop in seen:
+                    continue
+                seen.add(next_hop)
+                hop_bytes = len(next_hop) // 2
+                if hop_bytes <= 1:
                     rptr_1b += 1
-                elif bph <= 2:
+                elif hop_bytes <= 2:
                     rptr_2b += 1
                 else:
                     rptr_3b += 1
@@ -2429,29 +2426,46 @@ def _2byte_progress_bar(rptr_1b, rptr_2b, rptr_3b, width=13):
     return f"2-byte+ rptrs: {bar} {pct}%"
 
 
+def _count_contact_types():
+    """Return (companions, repeaters, room_servers) from contacts by type."""
+    try:
+        contacts = _fetch_json(f"{_API}/api/contacts")
+        companions = repeaters = rooms = 0
+        for c in contacts:
+            t = c.get("type")
+            if t == 1:
+                companions += 1
+            elif t == 2:
+                repeaters += 1
+            elif t == 3:
+                rooms += 1
+        return companions, repeaters, rooms
+    except Exception:
+        return None
+
+
 def cmd_stats():
     """Mesh network statistics from Remote Terminal API."""
     try:
         data = _fetch_json(f"{_API}/api/statistics")
         nodes = data["contact_count"]
-        rptrs = data["repeater_count"]
         ch = data["channel_count"]
         msgs = data["total_channel_messages"]
         pkts = data["total_packets"]
         heard = data["contacts_heard"]
         nf = data.get("noise_floor_24h", {}).get("latest_noise_floor_dbm")
         nf_str = f" NF:{nf}dBm" if nf is not None else ""
-        rptr_1b, rptr_2b, rptr_3b = _count_repeater_types()
-        rptr_total = rptr_1b + rptr_2b + rptr_3b
-        if rptr_total > 0:
-            rptr_str = f" | rptrs: {rptr_1b}\u00d71B {rptr_2b}\u00d72B {rptr_3b}\u00d73B"
+        counts = _count_contact_types()
+        if counts:
+            companions, rptrs, rooms = counts
         else:
-            rptr_str = ""
+            companions = nodes
+            rptrs = data["repeater_count"]
+            rooms = data.get("room_server_count") or 0
         lines = [
-            f"\U0001f4ca {nodes} nodes {rptrs} rptrs {ch}ch | heard 1h:{heard['last_hour']} 24h:{heard['last_24_hours']}",
-            f"\U0001f4e1 {msgs} msgs {pkts} pkts{nf_str}{rptr_str}",
+            f"\U0001f4ca {companions} companions {rptrs} repeaters {rooms} room servers",
         ]
-        bar = _2byte_progress_bar(rptr_1b, rptr_2b, rptr_3b)
+        bar = _2byte_progress_bar(*_count_repeater_types())
         if bar:
             lines.append(bar)
         return lines
