@@ -2408,16 +2408,34 @@ def cmd_otd():
         return "couldn't fetch on-this-day data"
 
 
+def _recent_repeater_pubkeys():
+    """Return pubkeys of repeaters within _CONTACT_RECENT_DAYS, or None if unfiltered."""
+    if _CONTACT_RECENT_DAYS <= 0:
+        return None
+    return {
+        (c.get("public_key") or "").lower()
+        for c in _fetch_all_contacts(max_age_days=_CONTACT_RECENT_DAYS)
+        if c.get("type") == 2 and c.get("public_key")
+    }
+
+
+def _next_hop_is_recent_repeater(next_hop, recent_pubkeys):
+    return any(pk.startswith(next_hop) for pk in recent_pubkeys)
+
+
 def _count_repeater_types():
     """Count repeaters by advert path hash width via unique next_hop values."""
     rptr_1b = rptr_2b = rptr_3b = 0
     seen = set()
+    recent = _recent_repeater_pubkeys()
     try:
         adverts = _fetch_json(f"{_API}/api/contacts/repeaters/advert-paths")
         for entry in adverts:
             for p in entry.get("paths") or []:
                 next_hop = (p.get("next_hop") or "").lower()
                 if not next_hop or next_hop in seen:
+                    continue
+                if recent is not None and not _next_hop_is_recent_repeater(next_hop, recent):
                     continue
                 seen.add(next_hop)
                 hop_bytes = len(next_hop) // 2
@@ -2448,7 +2466,8 @@ def _2byte_progress_bar(rptr_1b, rptr_2b, rptr_3b, width=13):
         remaining -= 1
     bar += "\u2591" * remaining
     pct = int(ratio * 100)
-    return f"2-byte+ rptrs: {bar} {pct}%"
+    age = f" ({_CONTACT_RECENT_DAYS}d)" if _CONTACT_RECENT_DAYS > 0 else ""
+    return f"2-byte+ rptrs{age}: {bar} {pct}%"
 
 
 def _count_contact_types():
