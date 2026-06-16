@@ -62,6 +62,7 @@ _ISS_NORAD_ID = 25544       # NORAD catalog ID for the ISS (used with N2YO)
 _ISS_MIN_ELEVATION = 20     # degrees — skip ISS passes lower than this
 _MESH_MAX_BYTES = 120       # MeshCore single-message byte limit
 _MAX_MESSAGES = 3           # max chunks any single reply is allowed to split into
+_CONTACT_RECENT_DAYS = 14   # stats/who: only contacts heard in this many days; 0 = all
 _AI_MAX_TOKENS = 800        # cap on Groq response length
 _AI_MODEL = "openai/gpt-oss-20b"  # Groq model id for !ai/!sonnet/!haiku
 
@@ -360,18 +361,25 @@ def _fetch_json(url, timeout=8, headers=None):
     return json.loads(_fetch(url, timeout=timeout, headers=headers))
 
 
-def _fetch_all_contacts(page_size=1000):
-    """Fetch every contact via limit/offset pagination (RT max limit is 1000)."""
+def _fetch_all_contacts(page_size=1000, max_age_days=0):
+    """Fetch every contact via limit/offset pagination (RT max limit is 1000).
+
+    If max_age_days > 0, keep only contacts with last_seen within that window.
+    """
     contacts = []
     offset = 0
+    cutoff = int(time.time()) - max_age_days * 86400 if max_age_days > 0 else None
     while True:
         page = _fetch_json(
             f"{_API}/api/contacts?limit={page_size}&offset={offset}"
         )
         if not page:
             break
+        raw_len = len(page)
+        if cutoff is not None:
+            page = [c for c in page if (c.get("last_seen") or 0) >= cutoff]
         contacts.extend(page)
-        if len(page) < page_size:
+        if raw_len < page_size:
             break
         offset += page_size
     return contacts
@@ -2446,7 +2454,7 @@ def _2byte_progress_bar(rptr_1b, rptr_2b, rptr_3b, width=13):
 def _count_contact_types():
     """Return (companions, repeaters, room_servers) from contacts by type."""
     try:
-        contacts = _fetch_all_contacts()
+        contacts = _fetch_all_contacts(max_age_days=_CONTACT_RECENT_DAYS)
         companions = repeaters = rooms = 0
         for c in contacts:
             t = c.get("type")
@@ -2478,8 +2486,9 @@ def cmd_stats():
             companions = data["contact_count"]
             rptrs = data["repeater_count"]
             rooms = 0
+        age = f" ({_CONTACT_RECENT_DAYS}d)" if _CONTACT_RECENT_DAYS > 0 else ""
         lines = [
-            f"\U0001f4ca {companions} companions {rptrs} repeaters {rooms} room servers",
+            f"\U0001f4ca {companions} companions {rptrs} repeaters {rooms} room servers{age}",
         ]
         bar = _2byte_progress_bar(*_count_repeater_types())
         if bar:
@@ -2512,7 +2521,7 @@ def cmd_who(prefix):
     if not all(c in "0123456789abcdef" for c in prefix):
         return "prefix must be hex (0-9, a-f)"
     try:
-        contacts = _fetch_all_contacts()
+        contacts = _fetch_all_contacts(max_age_days=_CONTACT_RECENT_DAYS)
     except Exception:
         return "couldn't fetch contacts"
     matches = [
