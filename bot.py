@@ -360,6 +360,23 @@ def _fetch_json(url, timeout=8, headers=None):
     return json.loads(_fetch(url, timeout=timeout, headers=headers))
 
 
+def _fetch_all_contacts(page_size=1000):
+    """Fetch every contact via limit/offset pagination (RT max limit is 1000)."""
+    contacts = []
+    offset = 0
+    while True:
+        page = _fetch_json(
+            f"{_API}/api/contacts?limit={page_size}&offset={offset}"
+        )
+        if not page:
+            break
+        contacts.extend(page)
+        if len(page) < page_size:
+            break
+        offset += page_size
+    return contacts
+
+
 _PATHX_CACHE = None
 _PATHX_CACHE_MTIME = 0.0
 
@@ -607,7 +624,7 @@ def _get_contact_path(sender_key):
     if not sender_key:
         return None, None
     try:
-        contacts = _fetch_json(f"{_API}/api/contacts?limit=1000")
+        contacts = _fetch_all_contacts()
         for c in contacts:
             pk = (c.get("public_key") or "").lower()
             if pk == sender_key.lower():
@@ -644,7 +661,7 @@ def _path_resolve(path, path_bytes_per_hop, sender_key):
     sender_gps = None
     if sender_key or not cache:
         try:
-            contacts = _fetch_json(f"{_API}/api/contacts?limit=1000")
+            contacts = _fetch_all_contacts()
         except Exception:
             contacts = None
     if sender_key and contacts:
@@ -883,7 +900,7 @@ def _find_contact_by_name(name):
     """Look up a contact's public key by name."""
     if not name:
         return None
-    contacts = _fetch_json(f"{_API}/api/contacts?limit=1000")
+    contacts = _fetch_all_contacts()
     for c in contacts:
         if c.get("name") == name:
             return c["public_key"]
@@ -2429,7 +2446,7 @@ def _2byte_progress_bar(rptr_1b, rptr_2b, rptr_3b, width=13):
 def _count_contact_types():
     """Return (companions, repeaters, room_servers) from contacts by type."""
     try:
-        contacts = _fetch_json(f"{_API}/api/contacts?limit=1000")
+        contacts = _fetch_all_contacts()
         companions = repeaters = rooms = 0
         for c in contacts:
             t = c.get("type")
@@ -2495,7 +2512,7 @@ def cmd_who(prefix):
     if not all(c in "0123456789abcdef" for c in prefix):
         return "prefix must be hex (0-9, a-f)"
     try:
-        contacts = _fetch_json(f"{_API}/api/contacts?limit=1000")
+        contacts = _fetch_all_contacts()
     except Exception:
         return "couldn't fetch contacts"
     matches = [
