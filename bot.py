@@ -2424,43 +2424,27 @@ def _next_hop_is_recent_repeater(next_hop, recent_pubkeys):
 
 
 def _count_repeater_types():
-    """Count repeaters by path hash width. Returns (1-byte, 2-byte, 3-byte).
-
-    For each repeater, take the MAX bytes-per-hop across up to 20 recent
-    adverts (a repeater that ever emitted a 2-byte advert is 2-byte-capable
-    even if its most recent advert happened to be 1-byte). Skip repeaters not
-    heard in the last 30 days — stale entries drag the count toward whatever
-    hash width was fashionable months ago.
-    """
+    """Count repeaters by advert path hash width via unique next_hop values."""
     rptr_1b = rptr_2b = rptr_3b = 0
     seen = set()
     recent = _recent_repeater_pubkeys()
-    cutoff = int(datetime.now(timezone.utc).timestamp()) - 30 * 86400
     try:
-        adverts = _fetch_json(f"{_API}/api/contacts/repeaters/advert-paths?limit_per_repeater=20")
+        adverts = _fetch_json(f"{_API}/api/contacts/repeaters/advert-paths")
         for entry in adverts:
-            paths = entry.get("paths") or []
-            max_bph = 0.0
-            last_seen = 0
-            for p in paths:
-                path_hex = p.get("path", "")
-                path_len = p.get("path_len", 0)
-                if path_len <= 0 or not path_hex:
+            for p in entry.get("paths") or []:
+                next_hop = (p.get("next_hop") or "").lower()
+                if not next_hop or next_hop in seen:
                     continue
-                bph = (len(path_hex) / 2) / path_len
-                if bph > max_bph:
-                    max_bph = bph
-                ls = p.get("last_seen") or 0
-                if ls > last_seen:
-                    last_seen = ls
-            if max_bph == 0 or last_seen < cutoff:
-                continue
-            if max_bph <= 1:
-                rptr_1b += 1
-            elif max_bph <= 2:
-                rptr_2b += 1
-            else:
-                rptr_3b += 1
+                if recent is not None and not _next_hop_is_recent_repeater(next_hop, recent):
+                    continue
+                seen.add(next_hop)
+                hop_bytes = len(next_hop) // 2
+                if hop_bytes <= 1:
+                    rptr_1b += 1
+                elif hop_bytes <= 2:
+                    rptr_2b += 1
+                else:
+                    rptr_3b += 1
     except Exception:
         pass
     return rptr_1b, rptr_2b, rptr_3b
