@@ -213,7 +213,7 @@ Only the listed commands work in each topic channel. Use **#bot** or **#test** f
 1. Install and run [Remote Terminal for MeshCore](https://github.com/nicholasgasior/Remote-Terminal-for-MeshCore) — it listens on `http://127.0.0.1:4042` by default.
 2. Create a fanout plugin in Remote Terminal pointing at `bot.py`, or PATCH the source in via the API (see [CLAUDE.md](./CLAUDE.md)).
 3. Fill in API keys in `bot.py` (`_N2YO_KEY`, `_BAY511_API_KEY`, `_GROQ_KEY`, `_AERODATABOX_KEY`). Commands degrade gracefully when keys are missing.
-4. Fill in the channel keys at the top of `server.ts` for the channels you want alerts posted to, and adjust `QUAKE_BBOX` and `NWS_ZONES` for your region.
+4. Fill in the channel keys at the top of `server.ts` for the channels you want alerts/scheduled posts to use, and adjust `QUAKE_BBOX` and `NWS_ZONES` for your region. Set `SCHEDULE_ONLY = true` to run **only** canned scheduled messages (skips all alert pollers, stats, pathx, and daily reboot).
 5. Run `server.ts` with `node --experimental-strip-types --env-file=.env --watch server.ts`.
 
 ## License

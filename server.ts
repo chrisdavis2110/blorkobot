@@ -12,6 +12,10 @@
 const API_BASE = "http://127.0.0.1:4042";
 const COMPANION_API_BASE = "http://127.0.0.1:4043";
 
+// true = only run SCHEDULED_MESSAGES (no USGS/NWS/fire/space/power/RSS/stats/
+// message logging/pathx/daily reboot). false = full alert server.
+const SCHEDULE_ONLY = true;
+
 // Daily reboot of attached radios (Heltec + companion) at 4am local time —
 // clears any stuck state from long-running radio firmware.
 const DAILY_REBOOT_HOUR = 4;
@@ -1128,41 +1132,46 @@ function logAlert(
 // Main
 // ---------------------------------------------------------------------------
 
-console.log("BlorkoBot alert server starting...");
-console.log(`  USGS poll: every ${QUAKE_POLL_MS / 1000}s (M${QUAKE_MIN_MAG}+ in bbox)`);
-console.log(`  NWS poll:  every ${NWS_POLL_MS / 1000}s (zones: ${NWS_ZONES})`);
-console.log(`  FIRE poll: every ${FIRE_POLL_MS / 1000}s (CAL FIRE active wildfires)`);
-console.log(`  Space:    every ${SPACE_POLL_MS / 1000}s (M-class+ flares, Kp 5+ storms)`);
-console.log(`  Power:    every ${POWER_POLL_MS / 1000}s (PG&E Bay Area outages)`);
-console.log(`  RSS:      every ${RSS_POLL_MS / 1000}s (bayareameshcore.com blog)`);
-console.log(`  Stats:     every ${STATS_POLL_MS / 1000 / 3600}h -> ${STATS_FILE}`);
-console.log(`  Repeater:  every ${STATS_POLL_MS / 1000 / 3600}h -> ${REPEATER_STATS_FILE}`);
-console.log(`  Messages:  every ${MSG_POLL_MS / 1000}s -> BetterStack`);
-console.log(`  BetterStack: ${BETTERSTACK_TOKEN ? "enabled" : "disabled (set BETTERSTACK_TOKEN)"}`);
+console.log(`BlorkoBot alert server starting${SCHEDULE_ONLY ? " (schedule-only)" : ""}...`);
 
-loadSeen();
-console.log(`  Loaded ${Object.keys(seen).length} seen IDs from disk`);
+if (SCHEDULE_ONLY) {
+  scheduleCannedMessages();
+} else {
+  console.log(`  USGS poll: every ${QUAKE_POLL_MS / 1000}s (M${QUAKE_MIN_MAG}+ in bbox)`);
+  console.log(`  NWS poll:  every ${NWS_POLL_MS / 1000}s (zones: ${NWS_ZONES})`);
+  console.log(`  FIRE poll: every ${FIRE_POLL_MS / 1000}s (CAL FIRE active wildfires)`);
+  console.log(`  Space:    every ${SPACE_POLL_MS / 1000}s (M-class+ flares, Kp 5+ storms)`);
+  console.log(`  Power:    every ${POWER_POLL_MS / 1000}s (PG&E Bay Area outages)`);
+  console.log(`  RSS:      every ${RSS_POLL_MS / 1000}s (bayareameshcore.com blog)`);
+  console.log(`  Stats:     every ${STATS_POLL_MS / 1000 / 3600}h -> ${STATS_FILE}`);
+  console.log(`  Repeater:  every ${STATS_POLL_MS / 1000 / 3600}h -> ${REPEATER_STATS_FILE}`);
+  console.log(`  Messages:  every ${MSG_POLL_MS / 1000}s -> BetterStack`);
+  console.log(`  BetterStack: ${BETTERSTACK_TOKEN ? "enabled" : "disabled (set BETTERSTACK_TOKEN)"}`);
 
-// Run immediately, then on interval
-pollQuakes();
-pollWeather();
-pollFires();
-pollSpaceEvents();
-pollPowerOutages();
-pollRSS();
-collectAllStats();
-pollMessages();
-buildPathxCache();
+  loadSeen();
+  console.log(`  Loaded ${Object.keys(seen).length} seen IDs from disk`);
 
-setInterval(pollQuakes, QUAKE_POLL_MS);
-setInterval(pollWeather, NWS_POLL_MS);
-setInterval(pollFires, FIRE_POLL_MS);
-setInterval(pollSpaceEvents, SPACE_POLL_MS);
-setInterval(pollPowerOutages, POWER_POLL_MS);
-setInterval(pollRSS, RSS_POLL_MS);
-setInterval(collectAllStats, STATS_POLL_MS);
-setInterval(pollMessages, MSG_POLL_MS);
-setInterval(buildPathxCache, PATHX_CACHE_POLL_MS);
+  // Run immediately, then on interval
+  pollQuakes();
+  pollWeather();
+  pollFires();
+  pollSpaceEvents();
+  pollPowerOutages();
+  pollRSS();
+  collectAllStats();
+  pollMessages();
+  buildPathxCache();
 
-scheduleDailyReboot();
-scheduleCannedMessages();
+  setInterval(pollQuakes, QUAKE_POLL_MS);
+  setInterval(pollWeather, NWS_POLL_MS);
+  setInterval(pollFires, FIRE_POLL_MS);
+  setInterval(pollSpaceEvents, SPACE_POLL_MS);
+  setInterval(pollPowerOutages, POWER_POLL_MS);
+  setInterval(pollRSS, RSS_POLL_MS);
+  setInterval(collectAllStats, STATS_POLL_MS);
+  setInterval(pollMessages, MSG_POLL_MS);
+  setInterval(buildPathxCache, PATHX_CACHE_POLL_MS);
+
+  scheduleDailyReboot();
+  scheduleCannedMessages();
+}
