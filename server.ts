@@ -18,6 +18,7 @@ const DAILY_REBOOT_HOUR = 4;
 
 // MeshCore channel keys (hex). Fill in for your own deployment.
 // `public` is TX-only for SCHEDULED_MESSAGES — never used for alert fanout.
+// `test` / `bot` mirror bot.py `_DEFAULT_CHANNELS` names for the scheduler.
 const CHANNELS = {
   quake: "",
   weather: "",
@@ -26,6 +27,7 @@ const CHANNELS = {
   power: "",
   alert: "",
   bot: "",
+  test: "",
   public: "",
 };
 
@@ -36,12 +38,13 @@ const CHANNELS = {
 // Missed slots are NOT replayed after restart.
 const SCHEDULED_MESSAGES: {
   time: string; // "HH:MM" 24h local
-  channel: keyof typeof CHANNELS;
+  channel: string;
   message: string;
   days?: number[]; // e.g. [1, 2, 3, 4, 5] for weekdays
 }[] = [
   // { time: "08:00", channel: "public", message: "Good morning, Bay Area Mesh!" },
-  // { time: "18:00", channel: "bot", days: [1, 2, 3, 4, 5], message: "Weekday evening check-in" },
+  // { time: "08:00", channel: "#bot", message: "Good morning from #bot" },
+  // { time: "18:00", channel: "aabbccddeeff0011…", days: [1, 2, 3, 4, 5], message: "raw key" },
 ];
 
 // Bounding box: Bay Area + surrounding (from USGS-NWS-PLAN.md)
@@ -919,6 +922,18 @@ function localTimeKey(d: Date): string {
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
 
+/** Resolve a schedule channel field to a hex channel_key (or null if unset). */
+function resolveScheduleChannel(channel: string): { key: string | null; label: string } {
+  const raw = channel.trim();
+  const name = raw.replace(/^#/, "").toLowerCase();
+  if (name in CHANNELS) {
+    const key = CHANNELS[name as keyof typeof CHANNELS];
+    return { key: key || null, label: `#${name}` };
+  }
+  // Treat anything else as a raw hex channel_key
+  return { key: raw || null, label: raw.slice(0, 12) + (raw.length > 12 ? "…" : "") };
+}
+
 async function tickScheduledMessages(): Promise<void> {
   if (SCHEDULED_MESSAGES.length === 0) return;
 
@@ -936,14 +951,14 @@ async function tickScheduledMessages(): Promise<void> {
     if (scheduledFired.has(fireKey)) continue;
     scheduledFired.add(fireKey);
 
-    const channelKey = CHANNELS[job.channel];
+    const { key: channelKey, label } = resolveScheduleChannel(job.channel);
     if (!channelKey) {
-      console.warn(`[schedule] skip #${job.channel} at ${timeKey}: channel key not set`);
+      console.warn(`[schedule] skip ${label} at ${timeKey}: channel key not set`);
       continue;
     }
 
     try {
-      console.log(`[schedule] ${timeKey} -> #${job.channel}: ${job.message.slice(0, 60)}`);
+      console.log(`[schedule] ${timeKey} -> ${label}: ${job.message.slice(0, 60)}`);
       await sendChannelMessage(channelKey, job.message);
     } catch (err) {
       // Still count as fired — don't retry later (avoids catch-up spam)
@@ -964,7 +979,8 @@ function scheduleCannedMessages(): void {
   }
   for (const job of SCHEDULED_MESSAGES) {
     const days = job.days ? ` days=${job.days.join(",")}` : " daily";
-    console.log(`[schedule] ${job.time} -> #${job.channel}${days}: ${job.message.slice(0, 40)}`);
+    const { label } = resolveScheduleChannel(job.channel);
+    console.log(`[schedule] ${job.time} -> ${label}${days}: ${job.message.slice(0, 40)}`);
   }
   // Align to the next minute boundary, then tick every 60s
   const now = Date.now();

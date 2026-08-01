@@ -177,12 +177,13 @@ These are pushed automatically — no commands needed. Just join the channel.
 ```ts
 const SCHEDULED_MESSAGES = [
   { time: "08:00", channel: "public", message: "Good morning, Bay Area Mesh!" },
-  { time: "18:00", channel: "bot", days: [1, 2, 3, 4, 5], message: "Weekday evening check-in" },
+  { time: "08:00", channel: "#bot", message: "Same as channel: \"bot\"" },
+  { time: "18:00", channel: "aabbcc…hex…", days: [1, 2, 3, 4, 5], message: "raw key" },
 ];
 ```
 
 - `time` — `"HH:MM"` in local time (24h)
-- `channel` — a key from `CHANNELS` (`bot`, `public`, etc.). `public` is TX-only for these scheduled posts (alerts and `bot.py` still never use Public)
+- `channel` — a `CHANNELS` name (`bot`, `public`), a `#name` like bot.py (`#bot`, `#test`), or a raw hex `channel_key`. `public` is TX-only for these scheduled posts (alerts and `bot.py` still never use Public)
 - `days` — optional `0=Sun … 6=Sat`; omit for every day
 - Missed slots are **not** replayed after a restart (avoids mesh spam)
 - Keep text short (~120 byte mesh limit)
