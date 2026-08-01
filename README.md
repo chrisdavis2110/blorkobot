@@ -170,6 +170,23 @@ The `server.ts` companion process posts automatic alerts to dedicated channels:
 
 These are pushed automatically — no commands needed. Just join the channel.
 
+### Scheduled canned messages
+
+`server.ts` can also post predefined messages at fixed local times (similar to meshcore-bot's `[Scheduled_Messages]`). Configure the `SCHEDULED_MESSAGES` array near the top of `server.ts`:
+
+```ts
+const SCHEDULED_MESSAGES = [
+  { time: "08:00", channel: "bot", message: "Good morning, Bay Area Mesh!" },
+  { time: "18:00", channel: "bot", days: [1, 2, 3, 4, 5], message: "Weekday evening check-in" },
+];
+```
+
+- `time` — `"HH:MM"` in local time (24h)
+- `channel` — a key from `CHANNELS` (`bot`, `weather`, etc.)
+- `days` — optional `0=Sun … 6=Sat`; omit for every day
+- Missed slots are **not** replayed after a restart (avoids mesh spam)
+- Keep text short (~120 byte mesh limit)
+
 ## Topic Channels
 
 BlorkoBot also responds to relevant commands in topic channels:

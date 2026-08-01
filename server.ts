@@ -27,6 +27,20 @@ const CHANNELS = {
   bot: "",
 };
 
+// Canned messages posted at local wall-clock times (like meshcore-bot's
+// [Scheduled_Messages]). Empty array = disabled. channel is a key into
+// CHANNELS. days is optional 0=Sun..6=Sat (omit = every day). Keep messages
+// terse (~120 byte mesh limit). Missed slots are NOT replayed after restart.
+const SCHEDULED_MESSAGES: {
+  time: string; // "HH:MM" 24h local
+  channel: keyof typeof CHANNELS;
+  message: string;
+  days?: number[]; // e.g. [1, 2, 3, 4, 5] for weekdays
+}[] = [
+  // { time: "08:00", channel: "bot", message: "Good morning, Bay Area Mesh!" },
+  // { time: "18:00", channel: "bot", days: [1, 2, 3, 4, 5], message: "Weekday evening check-in" },
+];
+
 // Bounding box: Bay Area + surrounding (from USGS-NWS-PLAN.md)
 const QUAKE_BBOX = { minLat: 36.5, maxLat: 39.0, minLon: -123.5, maxLon: -120.5 };
 const QUAKE_MIN_MAG = 2.5;
@@ -884,6 +898,81 @@ function scheduleDailyReboot(): void {
 }
 
 // ---------------------------------------------------------------------------
+// Scheduled canned messages (local wall clock)
+// ---------------------------------------------------------------------------
+
+/** Keys already fired this process: "YYYY-MM-DD|HH:MM|index" */
+const scheduledFired = new Set<string>();
+
+function pad2(n: number): string {
+  return n.toString().padStart(2, "0");
+}
+
+function localDateKey(d: Date): string {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+function localTimeKey(d: Date): string {
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+async function tickScheduledMessages(): Promise<void> {
+  if (SCHEDULED_MESSAGES.length === 0) return;
+
+  const now = new Date();
+  const dateKey = localDateKey(now);
+  const timeKey = localTimeKey(now);
+  const dow = now.getDay();
+
+  for (let i = 0; i < SCHEDULED_MESSAGES.length; i++) {
+    const job = SCHEDULED_MESSAGES[i];
+    if (job.time !== timeKey) continue;
+    if (job.days && !job.days.includes(dow)) continue;
+
+    const fireKey = `${dateKey}|${timeKey}|${i}`;
+    if (scheduledFired.has(fireKey)) continue;
+    scheduledFired.add(fireKey);
+
+    const channelKey = CHANNELS[job.channel];
+    if (!channelKey) {
+      console.warn(`[schedule] skip #${job.channel} at ${timeKey}: channel key not set`);
+      continue;
+    }
+
+    try {
+      console.log(`[schedule] ${timeKey} -> #${job.channel}: ${job.message.slice(0, 60)}`);
+      await sendChannelMessage(channelKey, job.message);
+    } catch (err) {
+      // Still count as fired — don't retry later (avoids catch-up spam)
+      console.error(`[schedule] send failed:`, err);
+    }
+  }
+
+  // Drop yesterday's keys so the set doesn't grow forever
+  for (const k of scheduledFired) {
+    if (!k.startsWith(dateKey)) scheduledFired.delete(k);
+  }
+}
+
+function scheduleCannedMessages(): void {
+  if (SCHEDULED_MESSAGES.length === 0) {
+    console.log("[schedule] no canned messages configured");
+    return;
+  }
+  for (const job of SCHEDULED_MESSAGES) {
+    const days = job.days ? ` days=${job.days.join(",")}` : " daily";
+    console.log(`[schedule] ${job.time} -> #${job.channel}${days}: ${job.message.slice(0, 40)}`);
+  }
+  // Align to the next minute boundary, then tick every 60s
+  const now = Date.now();
+  const msToNextMinute = 60_000 - (now % 60_000) + 200; // +200ms past the mark
+  setTimeout(() => {
+    tickScheduledMessages();
+    setInterval(tickScheduledMessages, 60_000);
+  }, msToNextMinute);
+}
+
+// ---------------------------------------------------------------------------
 // Pathx cache — precomputed disambiguation data for !pathx in bot.py
 // ---------------------------------------------------------------------------
 
@@ -1057,3 +1146,4 @@ setInterval(pollMessages, MSG_POLL_MS);
 setInterval(buildPathxCache, PATHX_CACHE_POLL_MS);
 
 scheduleDailyReboot();
+scheduleCannedMessages();

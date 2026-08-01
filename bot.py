@@ -158,7 +158,7 @@ _COMMANDS = {
     "sonnet": False,
     "haiku": False,
     "chess": False,
-    "convert": True,
+    "convert": False,
     "time": False,
     "zip": False,
     "set": False,
