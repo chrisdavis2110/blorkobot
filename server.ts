@@ -82,6 +82,17 @@ const BETTERSTACK_HOST = process.env.BETTERSTACK_HOST ?? "";
 const BETTERSTACK_TOKEN = process.env.BETTERSTACK_TOKEN ?? "";
 const SR_REPEATER_PASSWORD = process.env.SR_REPEATER_PASSWORD ?? "";
 
+// Remote Terminal Basic auth (same as bot.py / MESHCORE_BASIC_AUTH_*).
+// Prefer env vars; optionally hardcode here for a fixed deploy.
+const RT_USER =
+  process.env.MESHCORE_BASIC_AUTH_USERNAME ??
+  process.env.RT_USER ??
+  "";
+const RT_PASS =
+  process.env.MESHCORE_BASIC_AUTH_PASSWORD ??
+  process.env.RT_PASS ??
+  "";
+
 const SEEN_FILE = new URL("./seen.json", import.meta.url).pathname;
 const SEEN_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
@@ -197,12 +208,33 @@ function isSeen(id: string): boolean {
 // Remote Terminal API helper
 // ---------------------------------------------------------------------------
 
+function rtHeaders(extra?: Record<string, string>): Record<string, string> {
+  const headers: Record<string, string> = {
+    "User-Agent": "BlorkoBot",
+    ...extra,
+  };
+  if (RT_USER && RT_PASS) {
+    headers.Authorization =
+      "Basic " + Buffer.from(`${RT_USER}:${RT_PASS}`).toString("base64");
+  }
+  return headers;
+}
+
+async function rtFetch(
+  url: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  const extra =
+    init.headers && typeof init.headers === "object" && !Array.isArray(init.headers)
+      ? (init.headers as Record<string, string>)
+      : undefined;
+  return fetch(url, { ...init, headers: rtHeaders(extra) });
+}
+
 async function sendChannelMessage(channelKey: string, text: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/messages/channel`, {
+  const res = await rtFetch(`${API_BASE}/api/messages/channel`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ channel_key: channelKey, text }),
   });
   if (!res.ok) {
@@ -671,7 +703,7 @@ async function sendToBetterStack(
 
 async function collectStats(): Promise<void> {
   try {
-    const res = await fetch(`${API_BASE}/api/statistics`);
+    const res = await rtFetch(`${API_BASE}/api/statistics`);
     if (!res.ok) throw new Error(`statistics ${res.status}`);
     const data = await res.json();
 
@@ -693,7 +725,7 @@ async function collectStats(): Promise<void> {
 
 async function loginToRepeater(): Promise<boolean> {
   try {
-    const res = await fetch(
+    const res = await rtFetch(
       `${API_BASE}/api/contacts/${SR_REPEATER_KEY}/repeater/login`,
       {
         method: "POST",
@@ -733,7 +765,7 @@ async function collectRepeaterStats(): Promise<void> {
 
     let res: Response | null = null;
     for (let attempt = 1; attempt <= REPEATER_STATUS_RETRIES; attempt++) {
-      res = await fetch(
+      res = await rtFetch(
         `${API_BASE}/api/contacts/${SR_REPEATER_KEY}/repeater/status`,
         { method: "POST" },
       );
@@ -769,7 +801,7 @@ async function collectRepeaterStats(): Promise<void> {
 
 async function collectRepeaterByteWidthStats(): Promise<void> {
   try {
-    const res = await fetch(`${API_BASE}/api/contacts/repeaters/advert-paths`);
+    const res = await rtFetch(`${API_BASE}/api/contacts/repeaters/advert-paths`);
     if (!res.ok) throw new Error(`advert-paths ${res.status}`);
     const data: any[] = await res.json();
 
@@ -820,7 +852,7 @@ async function pollMessages(): Promise<void> {
   try {
     // On first run, just grab the latest message ID as our cursor
     if (lastMsgId === null) {
-      const res = await fetch(`${API_BASE}/api/messages?limit=1`);
+      const res = await rtFetch(`${API_BASE}/api/messages?limit=1`);
       if (!res.ok) throw new Error(`messages ${res.status}`);
       const msgs = await res.json();
       if (msgs.length > 0) lastMsgId = msgs[0].id;
@@ -828,7 +860,7 @@ async function pollMessages(): Promise<void> {
       return;
     }
 
-    const res = await fetch(
+    const res = await rtFetch(
       `${API_BASE}/api/messages?after_id=${lastMsgId}&limit=200`,
     );
     if (!res.ok) throw new Error(`messages ${res.status}`);
@@ -867,7 +899,7 @@ async function pollMessages(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function rebootRadio(label: string, baseUrl: string): Promise<void> {
-  const res = await fetch(`${baseUrl}/api/radio/reboot`, { method: "POST" });
+  const res = await rtFetch(`${baseUrl}/api/radio/reboot`, { method: "POST" });
   if (!res.ok) {
     const body = await res.text();
     throw new Error(`${label} HTTP ${res.status}: ${body.slice(0, 200)}`);
@@ -1010,9 +1042,9 @@ type PathxCandidate = {
 async function buildPathxCache(): Promise<void> {
   try {
     const [contactsR, advertsR, configR] = await Promise.all([
-      fetch(`${API_BASE}/api/contacts?limit=1000`),
-      fetch(`${API_BASE}/api/contacts/repeaters/advert-paths`),
-      fetch(`${API_BASE}/api/radio/config`),
+      rtFetch(`${API_BASE}/api/contacts?limit=1000`),
+      rtFetch(`${API_BASE}/api/contacts/repeaters/advert-paths`),
+      rtFetch(`${API_BASE}/api/radio/config`),
     ]);
     if (!contactsR.ok || !advertsR.ok || !configR.ok) {
       throw new Error(`http ${contactsR.status}/${advertsR.status}/${configR.status}`);
@@ -1133,6 +1165,7 @@ function logAlert(
 // ---------------------------------------------------------------------------
 
 console.log(`BlorkoBot alert server starting${SCHEDULE_ONLY ? " (schedule-only)" : ""}...`);
+console.log(`  RT auth: ${RT_USER && RT_PASS ? `enabled (user=${RT_USER})` : "disabled — set MESHCORE_BASIC_AUTH_USERNAME/PASSWORD if RT requires it"}`);
 
 if (SCHEDULE_ONLY) {
   scheduleCannedMessages();
