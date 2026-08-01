@@ -17,6 +17,7 @@ const COMPANION_API_BASE = "http://127.0.0.1:4043";
 const DAILY_REBOOT_HOUR = 4;
 
 // MeshCore channel keys (hex). Fill in for your own deployment.
+// `public` is TX-only for SCHEDULED_MESSAGES — never used for alert fanout.
 const CHANNELS = {
   quake: "",
   weather: "",
@@ -25,19 +26,21 @@ const CHANNELS = {
   power: "",
   alert: "",
   bot: "",
+  public: "",
 };
 
 // Canned messages posted at local wall-clock times (like meshcore-bot's
 // [Scheduled_Messages]). Empty array = disabled. channel is a key into
-// CHANNELS. days is optional 0=Sun..6=Sat (omit = every day). Keep messages
-// terse (~120 byte mesh limit). Missed slots are NOT replayed after restart.
+// CHANNELS (including `public` for rare whole-mesh posts). days is optional
+// 0=Sun..6=Sat (omit = every day). Keep messages terse (~120 byte mesh limit).
+// Missed slots are NOT replayed after restart.
 const SCHEDULED_MESSAGES: {
   time: string; // "HH:MM" 24h local
   channel: keyof typeof CHANNELS;
   message: string;
   days?: number[]; // e.g. [1, 2, 3, 4, 5] for weekdays
 }[] = [
-  // { time: "08:00", channel: "bot", message: "Good morning, Bay Area Mesh!" },
+  // { time: "08:00", channel: "public", message: "Good morning, Bay Area Mesh!" },
   // { time: "18:00", channel: "bot", days: [1, 2, 3, 4, 5], message: "Weekday evening check-in" },
 ];
 
